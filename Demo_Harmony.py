@@ -323,7 +323,7 @@ if is_user_locked(user_id, socket_id, lock_data):
 # ------------------------
 # Access form (styled link) + fallback
 # ------------------------
-st.markdown("### 📝 Step 1: Complete Access Form")
+st.markdown("### 📝 Steps: Complete Access Form, tick, enter the problem and click on run analysis")
 form_url = "https://41dt5g.share-na2.hsforms.com/2K9_0lqxDTzeMPY4ZyJkBLQ"
 
 st.markdown(
@@ -380,3 +380,4 @@ if st.button("🚀 Run Flashmind Analysis"):
         register_user_lock(user_id, socket_id, lock_data)
         st.success("✅ Analysis complete. Demo locked for 30 days.")
         st.rerun()
+
