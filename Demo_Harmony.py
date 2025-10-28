@@ -1,5 +1,7 @@
-# === Flashmind Analyzer (with Prompt Builder & Hidden Groq Engine) ===
-# Run with: streamlit run app.py
+# === ⚡ Flashmind Analyzer (Secure Locked Edition) ===
+# Author: Arjit | Flashmind Systems © 2025
+# Deploy via: Streamlit Cloud + GitHub
+# Key stored privately as FLASHMIND_KEY in secrets.toml
 
 import streamlit as st
 import requests
@@ -7,27 +9,21 @@ import time
 import re
 
 # ============================================================
-# 🔐 Backend API Key (hidden from user)
+# 🔒 Hidden Backend Key (Configured in Streamlit Secrets)
 # ============================================================
-DEFAULT_ENGINE_KEY = "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"
+# In Streamlit Cloud:
+# Settings → Secrets → Add:
+#   FLASHMIND_KEY = "your_actual_key_here"
 
-st.set_page_config(page_title="⚡ Flashmind Analyzer", page_icon="⚡")
-
-with st.sidebar:
-    st.header("⚙️ Engine Configuration (Private)")
-    st.caption("This section is for admin only.")
-    engine_key = st.text_input("Backend Engine Key", type="password", value=DEFAULT_ENGINE_KEY)
-    online_mode = st.toggle("🌐 Online Mode (Enable references)", value=True)
-    st.markdown("---")
-    st.caption("🔒 Engine secured • Flashmind Systems © 2025")
+ENGINE_KEY = st.secrets.get("FLASHMIND_KEY", None)
 
 # ============================================================
-# === Reference Generator (stub for extension)
+# === Reference Generator (Static/Online Stub)
 # ============================================================
 def get_references(query, online=True):
-    """Simulated reference retriever — replace with web search API if needed."""
+    """Simulated reference retriever."""
     if not online:
-        return ["https://en.wikipedia.org/wiki/" + re.sub(r'\\s+', '_', query)]
+        return [f"https://en.wikipedia.org/wiki/{re.sub(r'\\s+', '_', query)}"]
     else:
         return [
             f"https://www.brookings.edu/research/{query.replace(' ', '-')}-2025",
@@ -36,148 +32,122 @@ def get_references(query, online=True):
         ]
 
 # ============================================================
-# === Prompt Builder (with references + 2025 insights)
+# === Locked Prompt Template (User cannot modify)
 # ============================================================
-def build_prompt(user, doer, input_text, model, prio, online_mode=True):
-    context = f"""User Priority: {prio}%\nDoer Priority: {100 - prio}%\n\n📥 User Input:\n{user}\n\n🛠️ Doer Input:\n{doer}\n\n📄 Main Content:\n{input_text}"""
-
-    refs = get_references(input_text, online_mode)
+def build_locked_prompt(topic: str):
+    refs = get_references(topic, online=True)
     refs_md = "\n".join([f"- [{url}]({url})" for url in refs])
 
-    definition_section = f"""
-Definition of **{input_text}** with authoritative insights (focus on 2025 strategies):
-
-References (auto-expand with text/images if available):  
-{refs_md}
-"""
-
     return f"""
-Use the *{model}* methodology to analyze the context below.
+Use the *Flashmind Strategic 360* methodology to analyze the following topic for 2025: **{topic}**
 
-ok Provide:
+Provide:
 
-1. List the Root Cause or Quantified Multiple causes with their *relevance percentage (all causes summing total to 100%) to the problem*.
-2. Suggest detailed Recommendations for each Root Cause in paragraph format.
-3. Provide a table in *markdown format* suitable for charts (don't repeat point 2.), like:
+1. Identify *Root Cause(s)* with quantified relevance percentages (total = 100%).
+2. Write detailed, actionable *Recommendations* for each Root Cause.
+3. Create a markdown table suitable for charts:
 
 | Root Cause | Contribution (%) | Recommended Solution |
 |------------|------------------|----------------------|
-| Cause 1    | 20               | Recommendation 1     |
-| Cause 2    | 25               | Recommendation 2     |
-| Cause 3    | 30               | Recommendation 3     |
-| ...        | ...              | ...                  |
+| Cause 1 | 25 | Solution 1 |
+| Cause 2 | 35 | Solution 2 |
+| Cause 3 | 40 | Solution 3 |
 
-4. Also create *Bar Chart or Pie Chart headings* for clarity:
+4. Add clear chart headings:
+   - Bar-Chart: Root Causes Contribution
+   - Pie-Chart: Distribution of Root Causes
 
-Bar-Chart: Root Causes Contribution 
+5. Include numeric or percentage-based insights.
+6. Add implementable examples for 2024–2025.
+7. Cite authoritative 2025 insights and sources:
+{refs_md}
 
-5. Create separate tables for numeric or percentage data if with comparison or contribution (Pie-Chart).   
-6. Detailed suggestions.  
-7. Include implementable examples (2024–2025) and actionable steps.  
-8. Reference authoritative insights (2025 only) where relevant, contextualizing them.  
-   - If reference articles contain images, preserve them inline (markdown `![alt](url)` or `<img>`).  
+8. Integrate relevant images inline (`![alt](url)` or `<img>` if available).
 
-{definition_section}
+⚠ Ensure:
+- Percentages always sum to 100%.
+- Use markdown tables (|) not ASCII boxes.
 
-⚠ Ensure:  
-- Use percentages or numeric values for contributions (required for charts).  
-- Use *markdown tables* (pipes |) rather than ASCII boxes.  
-- Include headings for Pie or Bar charts so your renderer can pick them up.  
-
-📌 Context:  
-{context}  
-
-(We understand the complexity of problems and harmony required for solution-oriented decisions, Arjit's Theory of Problem Solving under patent: with IPI India)  
+📌 Context:
+This analysis follows *Arjit's Theory of Problem Solving* (IPI India Patent 2025).
 """
 
 # ============================================================
-# === Flashmind Core Engine (Hidden Groq API Backend)
+# === Flashmind Engine (Private Backend)
 # ============================================================
-def flashmind_engine(prompt, api_key):
-    """Hidden backend engine using Groq API."""
-    try:
-        headers = {
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json"
-        }
+def flashmind_engine(prompt: str, api_key: str):
+    """Internal call to Flashmind backend."""
+    if not api_key:
+        return {"Summary": "❌ Flashmind Key not configured."}
 
-        # --- Core call ---
-        def call_model(model_name, prompt, timeout=60, retries=3):
-            for attempt in range(retries):
-                try:
-                    res = requests.post(
-                        "https://api.groq.com/openai/v1/chat/completions",
-                        headers=headers,
-                        json={"model": model_name, "messages": [{"role": "user", "content": prompt}]},
-                        timeout=timeout,
-                    )
-                    data = res.json()
-                    if "choices" in data and data["choices"]:
-                        return data["choices"][0]["message"]["content"].strip()
-                    elif "error" in data:
-                        wait_time = 30 * (attempt + 1)
-                        st.warning(f"⏳ Engine busy, retrying in {wait_time}s...")
-                        time.sleep(wait_time)
-                    else:
-                        raise ValueError(data)
-                except Exception as e:
-                    if attempt < retries - 1:
-                        time.sleep(5)
-                        continue
-                    else:
-                        return "⚠ Engine failed to generate output."
+    headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
 
-        # --- Multi-layer Flashmind process ---
-        st.write("🧩 Running Layer 1 Analysis...")
-        out1 = call_model("groq/compound-mini", prompt, timeout=90)
+    def call_model(model_name, prompt, timeout=90):
+        try:
+            res = requests.post(
+                "https://api.groq.com/openai/v1/chat/completions",  # Hidden backend
+                headers=headers,
+                json={"model": model_name, "messages": [{"role": "user", "content": prompt}]},
+                timeout=timeout,
+            )
+            data = res.json()
+            if "choices" in data and data["choices"]:
+                return data["choices"][0]["message"]["content"].strip()
+            else:
+                return "⚠ No response generated."
+        except Exception as e:
+            return f"⚠ Engine error: {e}"
 
-        st.write("🧩 Running Layer 2 Analysis...")
-        out2 = call_model("llama-3.1-8b-instant", prompt, timeout=90)
+    st.info("Running Flashmind Layer 1 Analysis...")
+    layer1 = call_model("groq/compound-mini", prompt)
 
-        blend_prompt = f"""Combine the following two analyses and generate a final strategic report:
+    st.info("Running Flashmind Layer 2 Analysis...")
+    layer2 = call_model("llama-3.1-8b-instant", prompt)
+
+    blend_prompt = f"""
+Combine the following analyses into a single strategic report for 2025:
 
 Layer 1:
-{out1}
+{layer1}
 
 Layer 2:
-{out2}
+{layer2}
 
-Focus on actionable insights and quantified patterns for 2025."""
-        summary = call_model("groq/compound", blend_prompt, timeout=90)
-
-        return {"Analysis 1": out1, "Analysis 2": out2, "Summary": summary}
-
-    except Exception as e:
-        st.error(f"❌ Flashmind Engine failed: {e}")
-        return {"Analysis 1": "", "Analysis 2": "", "Summary": "Error during processing."}
+Focus on actionable insights, quantified causes, and 2025 relevance.
+"""
+    summary = call_model("groq/compound", blend_prompt)
+    return {"Layer 1": layer1, "Layer 2": layer2, "Summary": summary}
 
 # ============================================================
-# === Streamlit UI (User sees only Flashmind branding)
+# === Streamlit UI (Brand: Flashmind Only)
 # ============================================================
+st.set_page_config(page_title="⚡ Flashmind Analyzer", page_icon="⚡")
 st.title("⚡ Flashmind Analyzer")
 st.caption("AI-Driven Root Cause & Strategy Engine (2025 Edition)")
 
-st.subheader("🧩 Build Your Prompt")
-col1, col2 = st.columns(2)
-user_input = col1.text_area("User Input", placeholder="Describe the issue or scenario…", height=150)
-doer_input = col2.text_area("Doer Input", placeholder="Describe technical or actionable input…", height=150)
-main_topic = st.text_input("📄 Main Content Topic (e.g., 'AI Market Forecast 2025')")
-model_choice = st.selectbox("Choose Analysis Methodology", ["Strategic 360", "Root-Cause Explorer", "Flashmind Layered"])
-priority = st.slider("User vs Doer Priority (%)", min_value=0, max_value=100, value=60)
+# Prevent multiple uses per user session
+if "used_once" not in st.session_state:
+    st.session_state.used_once = False
 
-if st.button("🧠 Build Prompt"):
-    built_prompt = build_prompt(user_input, doer_input, main_topic, model_choice, priority, online_mode)
-    st.text_area("Generated Prompt (internal)", built_prompt, height=400)
-    st.session_state["built_prompt"] = built_prompt
+topic = st.text_input("📄 Enter Analysis Topic (e.g., 'AI Market Forecast 2025')")
 
-if "built_prompt" in st.session_state:
-    if st.button("🚀 Run Flashmind Analysis"):
-        with st.spinner("Processing through Flashmind Engine..."):
-            results = flashmind_engine(st.session_state["built_prompt"], engine_key)
+if st.button("🚀 Run Flashmind Analysis", disabled=st.session_state.used_once):
+    if not topic.strip():
+        st.warning("Please enter a topic.")
+    else:
+        st.session_state.used_once = True
+        with st.spinner("Processing via Flashmind Engine..."):
+            prompt = build_locked_prompt(topic)
+            result = flashmind_engine(prompt, ENGINE_KEY)
 
-        st.subheader("🔍 Analysis Layer 1")
-        st.write(results["Analysis 1"])
-        st.subheader("🔍 Analysis Layer 2")
-        st.write(results["Analysis 2"])
-        st.subheader("🧾 Strategic Summary")
-        st.write(results["Summary"])
+        st.subheader("🔍 Layer 1 Analysis")
+        st.write(result["Layer 1"])
+        st.subheader("🔍 Layer 2 Analysis")
+        st.write(result["Layer 2"])
+        st.subheader("🧾 Final Strategic Summary")
+        st.write(result["Summary"])
+        st.success("✅ Analysis complete. Flashmind Engine secured.")
+
+if st.session_state.used_once:
+    st.warning("⚠ Only one analysis allowed per user session.")
+
