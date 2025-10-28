@@ -1,4 +1,4 @@
-# === ⚡ Flashmind Analyzer (Enhanced Lock System) ===
+# === ⚡ Flashmind Analyzer (Privacy-Safe Lock System) ===
 # Author: Arjit | Flashmind Systems © 2025
 
 import streamlit as st
@@ -20,7 +20,6 @@ LOCK_DURATION_DAYS = 30
 # ⚙️ Utilities
 # ============================================================
 def get_user_ip():
-    """Fetch the user’s public IP address."""
     try:
         res = requests.get("https://api.ipify.org?format=json", timeout=5)
         return res.json().get("ip", "unknown")
@@ -28,11 +27,11 @@ def get_user_ip():
         return "unknown"
 
 def mask_ip(ip):
-    """Generate a masked user ID from IP address."""
-    return hashlib.sha256(ip.encode()).hexdigest()[:10] if ip != "unknown" else "anonymous-user"
+    """Create consistent anonymous ID for user from IP."""
+    return hashlib.sha256(ip.encode()).hexdigest()[:10] if ip != "unknown" else "anonymous"
 
 def load_lock_data():
-    """Load lock.json and auto-upgrade any old entries."""
+    """Load lock data, auto-upgrade old format (with IP keys) to user_id format."""
     try:
         headers = {"Authorization": f"token {LOCK_API_KEY}"}
         gist = requests.get(LOCK_FILE_URL, headers=headers, timeout=10).json()
@@ -44,45 +43,44 @@ def load_lock_data():
             content = next(iter(files.values()))["content"]
         data = json.loads(content)
 
+        # Auto-upgrade legacy IP-based format
         fixed = {}
-        for ip, value in data.items():
-            if isinstance(value, str):  # old style (timestamp only)
-                fixed[ip] = {
-                    "user_id": mask_ip(ip),
-                    "timestamp": value
-                }
-            else:
-                fixed[ip] = value
+        for key, value in data.items():
+            if isinstance(value, str):
+                uid = mask_ip(key)
+                fixed[uid] = {"timestamp": value}
+            elif isinstance(value, dict):
+                uid = value.get("user_id", key)
+                ts = value.get("timestamp", datetime.utcnow().isoformat())
+                fixed[uid] = {"timestamp": ts}
         return fixed
     except Exception:
         return {}
 
 def save_lock_data(data):
-    """Save updated lock data to GitHub Gist."""
+    """Save lock.json (only user_id entries)."""
+    clean_data = {uid: {"timestamp": v.get("timestamp")} for uid, v in data.items()}
     headers = {"Authorization": f"token {LOCK_API_KEY}", "Accept": "application/vnd.github+json"}
-    payload = {"files": {"lock.json": {"content": json.dumps(data, indent=4)}}}
+    payload = {"files": {"lock.json": {"content": json.dumps(clean_data, indent=4)}}}
     try:
         res = requests.patch(LOCK_FILE_URL, headers=headers, json=payload, timeout=10)
         return res.status_code == 200
     except Exception:
         return False
 
-def is_user_locked(ip, data):
-    """Check whether a user’s IP is within the lock period."""
-    if ip not in data:
+def is_user_locked(user_id, data):
+    """Check if user_id is locked."""
+    if user_id not in data:
         return False
     try:
-        ts = datetime.fromisoformat(data[ip]["timestamp"])
+        ts = datetime.fromisoformat(data[user_id]["timestamp"])
         return datetime.now() - ts < timedelta(days=LOCK_DURATION_DAYS)
     except Exception:
         return False
 
-def register_user_lock(ip, data):
-    """Register (or update) a user’s lock."""
-    data[ip] = {
-        "user_id": mask_ip(ip),
-        "timestamp": datetime.utcnow().isoformat()
-    }
+def register_user_lock(user_id, data):
+    """Lock user by user_id."""
+    data[user_id] = {"timestamp": datetime.utcnow().isoformat()}
     save_lock_data(data)
 
 # ============================================================
@@ -103,7 +101,7 @@ user_id = mask_ip(ip)
 st.write(f"🔒 User ID: `{user_id}`")
 
 lock_data = load_lock_data()
-locked = is_user_locked(ip, lock_data)
+locked = is_user_locked(user_id, lock_data)
 
 # ============================================================
 # 🔑 Admin Access Panel
@@ -114,15 +112,11 @@ with st.sidebar.expander("🔐 Admin Access", expanded=False):
     if password == ADMIN_PASSWORD:
         st.success("✅ Admin Access Granted")
 
-        # Reload latest lock file each time admin opens panel
-        lock_data = load_lock_data()
-
         if not lock_data:
             st.info("No locked users.")
         else:
             st.markdown("### 📜 Current Locked Users")
-            for ip_addr, entry in lock_data.items():
-                user = entry.get("user_id", "unknown")
+            for uid, entry in lock_data.items():
                 ts = entry.get("timestamp", "")
                 try:
                     dt = datetime.fromisoformat(ts)
@@ -130,31 +124,23 @@ with st.sidebar.expander("🔐 Admin Access", expanded=False):
                     time_str = dt.strftime("%H:%M:%S")
                     days_ago = (datetime.now() - dt).days
                 except Exception:
-                    date_str, time_str, days_ago = ts, "", ""
-                st.write(
-                    f"- 🧠 **User ID:** `{user}` | 🌐 **IP:** {ip_addr} | 📅 **Date:** {date_str} | 🕒 **Time:** {time_str} | ⏱️ **{days_ago} days ago**"
-                )
+                    date_str, time_str, days_ago = ts, "", "?"
+                st.write(f"- 🧠 **User ID:** `{uid}` | 📅 **Date:** {date_str} | 🕒 **Time:** {time_str} | ⏱️ {days_ago} days ago")
 
         st.markdown("---")
-        unlock_key = st.text_input("Enter IP or User ID to Unlock")
+        unlock_key = st.text_input("Enter User ID to Unlock")
 
         if st.button("🔓 Unlock User"):
-            found = False
-            for ip_addr, entry in list(lock_data.items()):
-                if unlock_key == ip_addr or unlock_key == entry.get("user_id"):
-                    del lock_data[ip_addr]
-                    save_lock_data(lock_data)
-                    st.success(f"✅ Unlocked `{unlock_key}` successfully.")
-                    st.rerun()  # 👈 instant reload for both user & admin
-                    found = True
-                    break
-            if not found:
-                st.warning("No matching IP or User ID found.")
+            if unlock_key in lock_data:
+                del lock_data[unlock_key]
+                save_lock_data(lock_data)
+                st.success(f"✅ Unlocked `{unlock_key}` successfully.")
+            else:
+                st.warning("No matching User ID found.")
 
         if st.button("🧹 Clear All Locks"):
             save_lock_data({})
-            st.success("✅ All locks cleared.")
-            st.rerun()
+            st.success("✅ All locks cleared (previous IP-based logs also wiped).")
 
 # ============================================================
 # 🧩 User Lock Check
@@ -190,5 +176,5 @@ if st.button("🚀 Run Flashmind Analysis"):
         st.warning("Please enter a topic.")
     else:
         st.info(f"Analyzing **{topic}**...")
-        st.success("✅ Analysis complete. Demo valid for one use per IP/User.")
-        register_user_lock(ip, lock_data)
+        st.success("✅ Analysis complete. Demo valid for one use per User ID.")
+        register_user_lock(user_id, lock_data)
