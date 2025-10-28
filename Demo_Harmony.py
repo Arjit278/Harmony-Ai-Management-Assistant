@@ -140,14 +140,26 @@ if st.button("🚀 Run Flashmind Analysis", disabled=st.session_state.used_once)
             prompt = build_locked_prompt(topic)
             result = flashmind_engine(prompt, ENGINE_KEY)
 
-        st.subheader("🔍 Layer 1 Analysis")
-        st.write(result["Layer 1"])
-        st.subheader("🔍 Layer 2 Analysis")
-        st.write(result["Layer 2"])
-        st.subheader("🧾 Final Strategic Summary")
-        st.write(result["Summary"])
-        st.success("✅ Analysis complete. Flashmind Engine secured.")
+        # --- Defensive safety check ---
+        if not isinstance(result, dict):
+            st.error("❌ Unexpected response from Flashmind Engine.")
+        else:
+            layer1 = result.get("Layer 1", "⚠ No Layer 1 data generated.")
+            layer2 = result.get("Layer 2", "⚠ No Layer 2 data generated.")
+            summary = result.get("Summary", "⚠ No summary available.")
+
+            st.subheader("🔍 Layer 1 Analysis")
+            st.write(layer1)
+
+            st.subheader("🔍 Layer 2 Analysis")
+            st.write(layer2)
+
+            st.subheader("🧾 Final Strategic Summary")
+            st.write(summary)
+
+            st.success("✅ Analysis complete. Flashmind Engine secured.")
 
 if st.session_state.used_once:
     st.warning("⚠ Only one analysis allowed per user session.")
+
 
