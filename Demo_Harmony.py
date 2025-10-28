@@ -1,11 +1,11 @@
-# === ⚡ Flashmind Analyzer (Final: robust timestamp handling, admin visible) ===
+# === ⚡ Flashmind Analyzer (Final: socket_id + robust timestamp handling) ===
 # Author: Arjit | Flashmind Systems © 2025
 #
 # NOTE: Put these in Streamlit Secrets:
 # FLASHMIND_KEY, LOCK_API_KEY, ADMIN_PASSWORD (or ADMIN_PASSWORD_BASE64)
 
 import streamlit as st
-import requests, json, hashlib, base64
+import requests, json, hashlib, base64, uuid
 from datetime import datetime, timedelta, timezone
 
 # ------------------------
@@ -36,15 +36,25 @@ def get_user_ip():
         return "unknown"
 
 def mask_ip(ip):
+    """Deterministic masked ID derived from IP (10 hex chars)."""
     return hashlib.sha256(ip.encode()).hexdigest()[:10] if ip != "unknown" else "anonymous"
 
+def get_socket_id():
+    """Persistent per-browser-session socket/session id (stored in session_state)."""
+    if "socket_id" not in st.session_state:
+        st.session_state["socket_id"] = hashlib.sha256(str(uuid.uuid4()).encode()).hexdigest()[:10]
+    return st.session_state["socket_id"]
+
 def parse_timestamp(ts_str):
-    """Try safe parsing of many timestamp formats."""
+    """Try safe parsing of many timestamp formats; return naive UTC datetime or None."""
     if not ts_str or not isinstance(ts_str, str):
         return None
     try:
         dt = datetime.fromisoformat(ts_str)
-        return dt.astimezone(timezone.utc).replace(tzinfo=None) if dt.tzinfo else dt
+        # convert offset-aware to naive UTC, or leave naive as-is (assume UTC)
+        if dt.tzinfo:
+            return dt.astimezone(timezone.utc).replace(tzinfo=None)
+        return dt
     except Exception:
         pass
     formats = [
@@ -59,19 +69,30 @@ def parse_timestamp(ts_str):
     return None
 
 def normalize_timestamp(ts_input):
-    """Accepts stored value, returns normalized UTC ISO string."""
+    """Return an ISO-8601 UTC string for storage, robust to input shapes."""
     if isinstance(ts_input, str):
         parsed = parse_timestamp(ts_input)
         return parsed.replace(tzinfo=None).isoformat() if parsed else datetime.utcnow().isoformat()
     elif isinstance(ts_input, dict):
         return normalize_timestamp(ts_input.get("timestamp"))
-    return datetime.utcnow().isoformat()
+    else:
+        return datetime.utcnow().isoformat()
 
 # ------------------------
-# Gist read/write
+# Gist read/write (store user_id, socket_id, timestamp)
 # ------------------------
 def save_lock_data(data):
-    clean = {uid: {"timestamp": v.get("timestamp")} for uid, v in data.items()}
+    """
+    Save structure:
+    { "<user_id>": { "user_id": "<user_id>", "socket_id": "<socket_id>", "timestamp": "<ISO>" }, ... }
+    """
+    clean = {}
+    for uid, v in data.items():
+        clean[uid] = {
+            "user_id": v.get("user_id", uid),
+            "socket_id": v.get("socket_id", ""),
+            "timestamp": v.get("timestamp")
+        }
     headers = {"Authorization": f"token {LOCK_API_KEY}", "Accept": "application/vnd.github+json"}
     payload = {"files": {"lock.json": {"content": json.dumps(clean, indent=4)}}}
     try:
@@ -82,11 +103,11 @@ def save_lock_data(data):
 
 def load_lock_data():
     """
-    Load lock data from Gist and normalize all entries.
-    Handles legacy and current formats safely:
-      - {"35.197.92.111": "timestamp"}  →  {"<masked>": {"timestamp": "..."}}
-      - {"user_id": {"timestamp": "..."}}
-      - Keeps 10-char masked IDs unchanged.
+    Load lock data and normalize entries. Supports legacy formats:
+    - { "1.2.3.4": "timestamp" }  -> will be converted to masked user_id
+    - { "user_id": { "timestamp": "..." } }
+    - { "user_id": { "user_id": "...", "socket_id": "...", "timestamp": "..." } }
+    Existing 10-char hashed IDs are preserved as-is.
     """
     try:
         headers = {"Authorization": f"token {LOCK_API_KEY}"}
@@ -100,46 +121,74 @@ def load_lock_data():
 
     fixed = {}
     for k, v in raw.items():
+        # Case: legacy simple string (timestamp) keyed by IP or hashed id
         if isinstance(v, str):
-            # If already hashed (10 hex chars), keep key
+            # if key already looks like 10-hex hash, keep as uid; else mask
             if len(k) == 10 and all(c in "0123456789abcdef" for c in k.lower()):
                 uid = k
             else:
                 uid = mask_ip(k)
-            fixed[uid] = {"timestamp": normalize_timestamp(v)}
+            fixed[uid] = {
+                "user_id": uid,
+                "socket_id": "",
+                "timestamp": normalize_timestamp(v)
+            }
 
+        # Case: object/dict - possibly contains user_id/socket_id/timestamp
         elif isinstance(v, dict):
-            uid = v.get("user_id", k)
+            # take explicit fields if present
+            stored_uid = v.get("user_id", k)
+            stored_sid = v.get("socket_id", "") or ""
             ts = v.get("timestamp", datetime.utcnow().isoformat())
-            # Keep hashed IDs as is; hash the rest
-            if len(uid) == 10 and all(c in "0123456789abcdef" for c in uid.lower()):
-                fixed[uid] = {"timestamp": normalize_timestamp(ts)}
+
+            # preserve hashed uid if it already is one, otherwise mask
+            if isinstance(stored_uid, str) and len(stored_uid) == 10 and all(c in "0123456789abcdef" for c in stored_uid.lower()):
+                uid = stored_uid
             else:
-                fixed[mask_ip(uid)] = {"timestamp": normalize_timestamp(ts)}
+                uid = mask_ip(stored_uid)
+
+            fixed[uid] = {
+                "user_id": uid,
+                "socket_id": stored_sid,
+                "timestamp": normalize_timestamp(ts)
+            }
 
         else:
-            # Unexpected structure → fallback
-            fixed[mask_ip(k)] = {"timestamp": datetime.utcnow().isoformat()}
+            # Unexpected structure — create fallback entry keyed by masked(k)
+            uid = mask_ip(str(k))
+            fixed[uid] = {
+                "user_id": uid,
+                "socket_id": "",
+                "timestamp": datetime.utcnow().isoformat()
+            }
 
-    # Save normalized structure back to Gist
+    # Persist normalized cleaned data (overwrites legacy keys)
     save_lock_data(fixed)
     return fixed
 
 # ------------------------
-# Lock Handling
+# Lock logic (check and register)
 # ------------------------
-def is_user_locked(user_id, data):
-    if user_id not in data:
-        return False
-    ts = parse_timestamp(data[user_id].get("timestamp"))
-    return bool(ts and (datetime.utcnow() - ts < timedelta(days=LOCK_DURATION_DAYS)))
+def is_user_locked(user_id, socket_id, data):
+    """Return True if either user_id or socket_id is present within lock window."""
+    for entry in data.values():
+        if entry.get("user_id") == user_id or (socket_id and entry.get("socket_id") == socket_id):
+            ts = parse_timestamp(entry.get("timestamp"))
+            if ts and (datetime.utcnow() - ts < timedelta(days=LOCK_DURATION_DAYS)):
+                return True
+    return False
 
-def register_user_lock(user_id, data):
-    data[user_id] = {"timestamp": datetime.utcnow().isoformat()}
+def register_user_lock(user_id, socket_id, data):
+    """Register a lock entry keyed by user_id and containing socket_id."""
+    data[user_id] = {
+        "user_id": user_id,
+        "socket_id": socket_id,
+        "timestamp": datetime.utcnow().isoformat()
+    }
     save_lock_data(data)
 
 # ------------------------
-# Flashmind Core
+# Flashmind Core (prompt builder + engine)
 # ------------------------
 def get_references(query):
     return [
@@ -148,7 +197,7 @@ def get_references(query):
         f"https://www.mckinsey.com/{query.replace(' ', '-')}-insights-2025"
     ]
 
-def build_locked_prompt(topic):
+def build_locked_prompt(topic: str):
     refs_md = "\n".join([f"- [{r}]({r})" for r in get_references(topic)])
     return f"""
 Analyze topic **{topic}** (2025 Edition) using Flashmind Strategic 360.
@@ -198,10 +247,13 @@ if LOCK_API_KEY:
 else:
     st.caption("❌ LOCK_API_KEY missing — add it in Streamlit Secrets")
 
-# User and lock
+# identify user (no raw IP stored)
 ip = get_user_ip()
 user_id = mask_ip(ip)
-st.write(f"🔒 User ID: `{user_id}`")
+socket_id = get_socket_id()
+st.write(f"🔒 User ID: `{user_id}` | 🔌 Socket ID: `{socket_id}`")
+
+# load lock file
 lock_data = load_lock_data()
 
 # ------------------------
@@ -215,6 +267,7 @@ with st.sidebar.expander("🔐 Admin Access", expanded=True):
         if pwd == ADMIN_PASSWORD:
             st.success("✅ Admin Access Granted")
             lock_data = load_lock_data()
+
             if not lock_data:
                 st.info("No locked users yet.")
             else:
@@ -225,19 +278,33 @@ with st.sidebar.expander("🔐 Admin Access", expanded=True):
                     if parsed:
                         ist = parsed + timedelta(hours=5, minutes=30)
                         days_ago = (datetime.utcnow() - parsed).days
-                        st.write(f"- 🧠 `{uid}` | 📅 {ist.strftime('%Y-%m-%d')} | 🕒 {ist.strftime('%H:%M:%S')} | ⏱️ {days_ago} days ago")
+                        st.write(
+                            f"- 🧠 `{uid}` | 📅 {ist.strftime('%Y-%m-%d')} | 🕒 {ist.strftime('%H:%M:%S')} | ⏱️ {days_ago} days ago"
+                        )
                     else:
                         st.write(f"- 🧠 `{uid}` | 🕒 Invalid timestamp (`{ts_str}`)")
+
             st.markdown("---")
-            unlock_id = st.text_input("Enter User ID to Unlock")
+            unlock_input = st.text_input("Enter User ID / IP / Socket ID to Unlock")
+
             if st.button("🔓 Unlock User"):
-                if unlock_id in lock_data:
-                    del lock_data[unlock_id]
-                    save_lock_data(lock_data)
-                    st.success(f"✅ Unlocked `{unlock_id}` successfully.")
-                    st.rerun()
+                if not unlock_input.strip():
+                    st.warning("Please enter a valid User ID, IP, or Socket ID.")
                 else:
-                    st.warning("User ID not found.")
+                    # Match either masked, IP, or socket ID
+                    found_key = None
+                    for uid in lock_data.keys():
+                        if uid == unlock_input.strip() or uid == mask_ip(unlock_input.strip()):
+                            found_key = uid
+                            break
+                    if found_key:
+                        del lock_data[found_key]
+                        save_lock_data(lock_data)
+                        st.success(f"✅ Unlocked `{unlock_input.strip()}` successfully.")
+                        st.rerun()
+                    else:
+                        st.warning("User ID / IP / Socket ID not found in lock file.")
+
             if st.button("🧹 Clear All Locks"):
                 save_lock_data({})
                 st.success("✅ All locks cleared.")
@@ -245,16 +312,17 @@ with st.sidebar.expander("🔐 Admin Access", expanded=True):
         elif pwd:
             st.error("❌ Incorrect password.")
 
+
 # ------------------------
-# 🔒 Lock check (stop if locked)
+# Lock check (stop if locked)
 # ------------------------
-if is_user_locked(user_id, lock_data):
+if is_user_locked(user_id, socket_id, lock_data):
     st.error("⚠ You have already used this Flashmind demo in the past 30 days.")
     st.stop()
 
 # ------------------------
-# 📝 Access Form
-# ------------------------    
+# Access form (styled link) + fallback
+# ------------------------
 st.markdown("### 📝 Step 1: Complete Access Form")
 form_url = "https://41dt5g.share-na2.hsforms.com/2K9_0lqxDTzeMPY4ZyJkBLQ"
 
@@ -272,17 +340,28 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
-st.link_button("Click here if form didn’t open", form_url)
+
+# fallback link_button (may not exist on older Streamlit versions)
+try:
+    st.link_button("Click here if form didn’t open", form_url)
+except Exception:
+    st.markdown(f'[Click here if form didn\'t open]({form_url})', unsafe_allow_html=True)
 
 if not st.checkbox("✅ I have filled and submitted the access form"):
     st.warning("Please confirm after submitting the form.")
     st.stop()
 
 # ------------------------
-# 🚀 Analysis Runner
+# Analysis Runner
 # ------------------------
 topic = st.text_input("📘 Enter Analysis Topic")
 if st.button("🚀 Run Flashmind Analysis"):
+    # re-load and double-check lock in case admin changed mid-session
+    lock_data = load_lock_data()
+    if is_user_locked(user_id, socket_id, lock_data):
+        st.error("🚫 You’re locked for 30 days. Please contact admin.")
+        st.stop()
+
     if not topic.strip():
         st.warning("Please enter a topic.")
     else:
@@ -297,6 +376,7 @@ if st.button("🚀 Run Flashmind Analysis"):
         st.subheader("🧾 Final Strategic Summary")
         st.write(result["Summary"])
 
-        register_user_lock(user_id, lock_data)
+        # register lock
+        register_user_lock(user_id, socket_id, lock_data)
         st.success("✅ Analysis complete. Demo locked for 30 days.")
-
+        st.rerun()
