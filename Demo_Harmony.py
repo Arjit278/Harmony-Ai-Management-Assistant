@@ -12,7 +12,7 @@ from datetime import datetime, timedelta
 # 🔒 Backend Keys
 # ============================================================
 ENGINE_KEY = st.secrets.get("FLASHMIND_KEY", None)
-LOCK_API_KEY = st.secrets.get("LOCK_API_KEY", None)  # GitHub token with gist permission
+LOCK_API_KEY = st.secrets.get("LOCK_API_KEY", None)
 LOCK_FILE_URL = "https://api.github.com/gists/7cd8a2b265c34b1592e88d1d5b863a8a"
 LOCK_DURATION_DAYS = 30
 ADMIN_PASSWORD = "Harmony_Chand@9028"
@@ -62,18 +62,23 @@ def save_lock_data(lock_data):
         return False
 
 def is_user_locked(ip, lock_data):
-    """Check if user is within 30-day lock window."""
+    """Check if IP is locked within the 30-day window."""
     if ip not in lock_data:
         return False
     try:
-        last_ts = datetime.fromisoformat(lock_data[ip])
+        ts_str = lock_data[ip].get("timestamp", "")
+        last_ts = datetime.fromisoformat(ts_str)
         return datetime.now() - last_ts < timedelta(days=LOCK_DURATION_DAYS)
     except Exception:
         return False
 
 def register_user_lock(ip, lock_data):
-    """Register user IP with current timestamp."""
-    lock_data[ip] = str(datetime.utcnow())
+    """Register user IP and masked ID with current timestamp."""
+    user_id = mask_ip(ip)
+    lock_data[ip] = {
+        "user_id": user_id,
+        "timestamp": str(datetime.utcnow())
+    }
     save_lock_data(lock_data)
 
 # ============================================================
@@ -132,7 +137,7 @@ def flashmind_engine(prompt, key):
 st.set_page_config(page_title="⚡ Flashmind Analyzer", page_icon="⚡")
 st.title("⚡ Flashmind Analyzer")
 
-# === Connection Check (Silent Display)
+# === Connection Check
 if LOCK_API_KEY:
     st.caption("✅ Connected with Flashmind API")
 else:
@@ -148,36 +153,41 @@ lock_data = load_lock_data()
 locked = is_user_locked(ip, lock_data)
 
 # ============================================================
-# === Admin Access (Hidden Panel)
+# === Admin Access (with user-id based unlocking)
 # ============================================================
 with st.sidebar.expander("🔐 Admin Access"):
     admin_password = st.text_input("Enter Admin Password", type="password")
     if admin_password == ADMIN_PASSWORD:
         st.success("✅ Admin Access Granted")
 
-        # View all locked users
+        # Show all locked users
         st.subheader("📜 Current Locked Users")
         if not lock_data:
             st.info("No users currently locked.")
         else:
-            st.json(lock_data)
+            for k, v in lock_data.items():
+                st.write(f"- **IP:** {k} | **User ID:** `{v.get('user_id')}` | **Locked:** {v.get('timestamp')}")
 
-        # Unlock specific user
-        unlock_ip = st.text_input("Enter IP to Unlock")
+        # Unlock by IP or User ID
+        unlock_key = st.text_input("Enter IP or User ID to Unlock")
         if st.button("🔓 Unlock User"):
-            if unlock_ip in lock_data:
-                del lock_data[unlock_ip]
-                save_lock_data(lock_data)
-                st.success(f"User `{unlock_ip}` unlocked successfully.")
-            else:
-                st.warning("IP not found in lock data.")
+            found = False
+            for ip_addr, data in list(lock_data.items()):
+                if unlock_key == ip_addr or unlock_key == data.get("user_id"):
+                    del lock_data[ip_addr]
+                    save_lock_data(lock_data)
+                    st.success(f"User `{unlock_key}` unlocked successfully.")
+                    found = True
+                    break
+            if not found:
+                st.warning("No matching IP/User ID found.")
 
         # Clear all locks
         if st.button("🧹 Clear All Locks"):
             save_lock_data({})
             st.success("All locks cleared successfully!")
 
-        # Test connection manually
+        # Test Gist connection
         if st.button("🔧 Test Gist Connection"):
             try:
                 headers = {"Authorization": f"token {LOCK_API_KEY}"}
