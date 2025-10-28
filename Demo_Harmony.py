@@ -229,6 +229,9 @@ def flashmind_engine(prompt, key):
 # ------------------------
 # Streamlit UI
 # ------------------------
+# ------------------------
+# Streamlit UI (fixed lock guard)
+# ------------------------
 st.set_page_config(page_title="⚡ Flashmind Analyzer", page_icon="⚡")
 st.title("⚡ Flashmind Analyzer")
 
@@ -246,7 +249,19 @@ st.write(f"🔒 User ID: `{user_id}`")
 lock_data = load_lock_data()
 locked = is_user_locked(user_id, lock_data)
 
-# Admin panel with IST display (handles invalid timestamps safely)
+# ------------------------
+# Early exit if locked
+# ------------------------
+if locked:
+    st.error(
+        "⚠ You have already used this Flashmind demo in the past **30 days**.\n\n"
+        "Please contact admin for enterprise or extended access."
+    )
+    st.stop()
+
+# ------------------------
+# Admin Panel
+# ------------------------
 with st.sidebar.expander("🔐 Admin Access", expanded=False):
     if not ADMIN_PASSWORD:
         st.warning("Admin access disabled. Add ADMIN_PASSWORD or ADMIN_PASSWORD_BASE64 in secrets.")
@@ -263,14 +278,11 @@ with st.sidebar.expander("🔐 Admin Access", expanded=False):
                     ts_str = val.get("timestamp")
                     parsed = parse_timestamp(ts_str)
                     if parsed:
-                        # parsed is naive UTC datetime -> convert to IST for display
                         ist = parsed + timedelta(hours=5, minutes=30)
                         days_ago = (datetime.utcnow() - parsed).days
                         st.write(f"- 🧠 `{uid}` | 📅 {ist.strftime('%Y-%m-%d')} | 🕒 {ist.strftime('%H:%M:%S')} | ⏱️ {days_ago} days ago")
                     else:
-                        # fallback: show raw string but mark invalid
                         st.write(f"- 🧠 `{uid}` | 🕒 Invalid timestamp (`{ts_str}`)")
-
             st.markdown("---")
             unlock_id = st.text_input("Enter User ID to Unlock")
             if st.button("🔓 Unlock User"):
@@ -285,6 +297,57 @@ with st.sidebar.expander("🔐 Admin Access", expanded=False):
                 save_lock_data({})
                 st.success("✅ All locks cleared.")
                 st.rerun()
+
+# ------------------------
+# Access Form + Analysis UI
+# ------------------------
+st.markdown("### 📝 Step 1: Complete Access Form")
+st.write("Please fill out the form below before proceeding:")
+form_url = "https://41dt5g.share-na2.hsforms.com/2K9_0lqxDTzeMPY4ZyJkBLQ"
+
+col1, col2 = st.columns([2, 1])
+with col1:
+    st.markdown(f'<a href="{form_url}" target="_blank" class="form-btn">📝 Open the Access Form</a>', unsafe_allow_html=True)
+with col2:
+    try:
+        st.link_button("Click here if form didn’t open", form_url)
+    except Exception:
+        st.markdown(f'[Click here if form didn\'t open]({form_url})', unsafe_allow_html=True)
+
+form_done = st.checkbox("✅ I have filled and submitted the access form")
+if not form_done:
+    st.warning("Please confirm after submitting the form.")
+    st.stop()
+
+# ------------------------
+# Analysis Runner
+# ------------------------
+topic = st.text_input("📘 Enter Analysis Topic")
+if st.button("🚀 Run Flashmind Analysis"):
+    # double-check lock before running (in case admin locked mid-session)
+    lock_data = load_lock_data()
+    if is_user_locked(user_id, lock_data):
+        st.error("🚫 You’re locked for 30 days. Please contact admin.")
+        st.stop()
+
+    if not topic.strip():
+        st.warning("Please enter a topic first.")
+    else:
+        st.info("Processing via Flashmind Engine...")
+        prompt = build_locked_prompt(topic)
+        result = flashmind_engine(prompt, ENGINE_KEY)
+
+        st.subheader("🔍 Analysis 1")
+        st.write(result["Analysis 1"])
+        st.subheader("🔍 Analysis 2")
+        st.write(result["Analysis 2"])
+        st.subheader("🧾 Final Summary")
+        st.write(result["Summary"])
+
+        # Register lock immediately after success
+        register_user_lock(user_id, lock_data)
+        st.success("✅ Analysis complete. Demo locked for 30 days.")
+        st.rerun()
 
 # Access form (styled link + fallback)
 st.markdown("### 📝 Step 1: Complete Access Form")
@@ -324,4 +387,5 @@ if st.button("🚀 Run Flashmind Analysis"):
 
         register_user_lock(user_id, lock_data)
         st.success("✅ Analysis complete. Demo locked for 30 days.")
+
 
