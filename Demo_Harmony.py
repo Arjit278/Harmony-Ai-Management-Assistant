@@ -37,7 +37,11 @@ def load_lock_data():
         headers = {"Authorization": f"token {LOCK_API_KEY}"}
         gist = requests.get(LOCK_FILE_URL, headers=headers, timeout=10).json()
         files = gist.get("files", {})
-        content = next(iter(files.values())).get("content", "{}")
+        if "lock.json" in files:
+            content = files["lock.json"].get("content", "{}")
+        else:
+            # Fallback in case GitHub renames the file automatically
+            content = next(iter(files.values())).get("content", "{}")
         return json.loads(content)
     except Exception:
         return {}
@@ -211,6 +215,7 @@ if st.button("🚀 Run Flashmind Analysis"):
 
         st.success("✅ Complete. Demo for only one use per user. For detailed access and multiple usage, kindly contact Admin.")
         register_user_lock(ip, lock_data)
+
 
 
 
