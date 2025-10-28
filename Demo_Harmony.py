@@ -1,4 +1,4 @@
-# === ⚡ Flashmind Analyzer (Secure Locked Edition) ===
+# === ⚡ Flashmind Analyzer (Demo-Locked Edition) ===
 # Author: Arjit | Flashmind Systems © 2025
 # Deploy via: Streamlit Cloud + GitHub
 # Key stored privately as FLASHMIND_KEY in secrets.toml
@@ -76,8 +76,8 @@ def flashmind_engine(prompt: str, api_key: str):
     if not api_key:
         return {
             "Analysis 1": "❌ Flashmind Key not configured.",
-            "Analysis 2": "",
-            "Summary": ""
+            "Analysis 2": "⚠ No Analysis 2 data generated.",
+            "Summary": "⚠ No Final Summary generated."
         }
 
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
@@ -95,10 +95,9 @@ def flashmind_engine(prompt: str, api_key: str):
                 return data["choices"][0]["message"]["content"].strip()
             else:
                 return "⚠ No response generated."
-        except Exception as e:
-            return f"⚠ Engine error: {e}"
+        except Exception:
+            return "⚠ Engine unavailable for demo mode."
 
-    # Run analysis layers
     out1 = call_model("groq/compound-mini", prompt)
     out2 = call_model("llama-3.1-8b-instant", prompt)
 
@@ -162,4 +161,3 @@ if st.button("🚀 Run Flashmind Analysis", disabled=st.session_state.used_once)
 # Restrict multiple runs per user session
 if st.session_state.used_once:
     st.info("⚠ Demo analysis allowed one per user session, Kindly contact admin for detailed version.")
-
