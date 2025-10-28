@@ -122,6 +122,25 @@ def flashmind_engine(prompt, key):
     return {"Analysis 1": a1, "Analysis 2": a2, "Summary": s}
 
 # ============================================================
+# === Verify GitHub Gist Lock Connection (Admin Debug)
+# ============================================================
+if st.sidebar.checkbox("🔧 Test Lock Connection (Admin Only)"):
+    st.sidebar.write("Testing connection to GitHub Gist...")
+
+    try:
+        headers = {"Authorization": f"token {LOCK_API_KEY}"}
+        res = requests.get(LOCK_FILE_URL, headers=headers, timeout=10)
+        if res.status_code == 200:
+            gist_data = res.json()
+            file_content = next(iter(gist_data["files"].values()))["content"]
+            st.sidebar.success("✅ Connected to GitHub Gist successfully!")
+            st.sidebar.code(file_content, language="json")
+        else:
+            st.sidebar.error(f"❌ Gist access failed. HTTP {res.status_code}")
+    except Exception as e:
+        st.sidebar.error(f"⚠ Connection error: {e}")
+
+# ============================================================
 # === Streamlit UI
 # ============================================================
 st.set_page_config(page_title="⚡ Flashmind Analyzer", page_icon="⚡")
@@ -179,3 +198,4 @@ if st.button("🚀 Run Flashmind Analysis"):
 
         st.success("✅ Complete. Demo for only one use per user. For detailed access and multiple usage, kindly contact Admin.")
         register_user_lock(ip, lock_data)
+
