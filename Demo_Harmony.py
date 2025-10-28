@@ -16,7 +16,8 @@ from datetime import datetime, timedelta
 ENGINE_KEY = st.secrets.get("FLASHMIND_KEY", None)
 LOCK_API_KEY = st.secrets.get("LOCK_API_KEY", None)  # Token for Gist or storage API
 
-LOCK_FILE_URL = "https://api.github.com/gists/YOUR_GIST_ID"  # Replace with your Gist ID
+LOCK_FILE_URL = "https://api.github.com/gists/c28ff6994dfa7734dfae2db2cbd4d8a3"
+# Replace with your Gist ID
 LOCK_DURATION_DAYS = 30
 
 # ============================================================
@@ -123,7 +124,7 @@ def flashmind_engine(prompt, key):
 # ============================================================
 st.set_page_config(page_title="⚡ Flashmind Analyzer", page_icon="⚡")
 st.title("⚡ Flashmind Analyzer")
-st.caption("One-use-per-user (30 days lock) | © 2025 Flashmind Systems")
+st.caption("Enjoy your trial let's harmonize your effort with our Business/Industrial Intel and Analytics (One-use-per-user) | © 2025 Flashmind Systems")
 
 ip = get_user_ip()
 st.write(f"🔒 User ID: `{ip}`")
@@ -156,3 +157,4 @@ if st.button("🚀 Run Flashmind Analysis"):
 
         st.success("✅ Complete. Demo for only one use per user for detailed version and multiple usage kindly contact Admin.")
         register_user_lock(ip, lock_data)
+
