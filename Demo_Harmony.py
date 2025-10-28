@@ -106,10 +106,12 @@ def flashmind_engine(prompt, key):
 
     def call(model):
         try:
-            res = requests.post("https://api.groq.com/openai/v1/chat/completions",
-                                headers=headers,
-                                json={"model": model, "messages": [{"role": "user", "content": prompt}]},
-                                timeout=60)
+            res = requests.post(
+                "https://api.groq.com/openai/v1/chat/completions",
+                headers=headers,
+                json={"model": model, "messages": [{"role": "user", "content": prompt}]},
+                timeout=60
+            )
             data = res.json()
             return data["choices"][0]["message"]["content"].strip()
         except Exception:
@@ -124,7 +126,7 @@ def flashmind_engine(prompt, key):
 # ============================================================
 st.set_page_config(page_title="⚡ Flashmind Analyzer", page_icon="⚡")
 st.title("⚡ Flashmind Analyzer")
-st.caption("Enjoy your trial let's harmonize your effort with our Business/Industrial Intel and Analytics (One-use-per-user) | © 2025 Flashmind Systems")
+st.caption("Enjoy your trial — harmonize your efforts with our Business/Industrial Intelligence and Analytics. (One-use-per-user) | © 2025 Flashmind Systems")
 
 ip = get_user_ip()
 st.write(f"🔒 User ID: `{ip}`")
@@ -136,6 +138,26 @@ if locked:
     st.error("⚠ You have already used this demo in the past 30 days.\n\nPlease contact admin for enterprise access.")
     st.stop()
 
+# ============================================================
+# === Pre-Access Form Step
+# ============================================================
+st.markdown("### 📝 Step 1: Complete Access Form")
+st.markdown("""
+Before using Flashmind Analyzer, please complete the short access form below.  
+👉 [Click here to open the form](https://41dt5g.share-na2.hsforms.com/2K9_0lqxDTzeMPY4ZyJkBLQ)  
+
+Once you’ve submitted it, check the box below to continue.
+""")
+
+form_filled = st.checkbox("✅ I have filled and submitted the access form")
+
+if not form_filled:
+    st.warning("Please complete the form and check the box to continue.")
+    st.stop()
+
+# ============================================================
+# === Continue to Flashmind Analysis
+# ============================================================
 topic = st.text_input("📄 Enter Analysis Topic")
 
 if st.button("🚀 Run Flashmind Analysis"):
@@ -155,6 +177,5 @@ if st.button("🚀 Run Flashmind Analysis"):
         st.subheader("🧾 Final Strategic Summary")
         st.write(result["Summary"])
 
-        st.success("✅ Complete. Demo for only one use per user for detailed version and multiple usage kindly contact Admin.")
+        st.success("✅ Complete. Demo for only one use per user. For detailed access and multiple usage, kindly contact Admin.")
         register_user_lock(ip, lock_data)
-
