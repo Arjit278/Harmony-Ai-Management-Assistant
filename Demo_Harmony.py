@@ -130,34 +130,50 @@ if "used_once" not in st.session_state:
 topic = st.text_input("📄 Enter Analysis Topic (e.g., 'AI Market Forecast 2025')")
 
 # ============================================================
-# === Run Analysis (Locked One-Use Mode)
+# === Run Analysis (Strict One-Use-Per-Session Mode)
 # ============================================================
-if st.button("🚀 Run Flashmind Analysis", disabled=st.session_state.used_once):
+
+# A session flag that persists for the duration of the user's session
+if "used_once" not in st.session_state:
+    st.session_state.used_once = False
+if "analysis_result" not in st.session_state:
+    st.session_state.analysis_result = None
+
+run_clicked = st.button("🚀 Run Flashmind Analysis", disabled=st.session_state.used_once)
+
+if run_clicked and not st.session_state.used_once:
     if not topic.strip():
         st.warning("Please enter a topic.")
     else:
+        # ✅ Immediately lock further use
         st.session_state.used_once = True
+
         with st.spinner("Processing via Flashmind Engine..."):
             prompt = build_locked_prompt(topic)
             result = flashmind_engine(prompt, ENGINE_KEY)
 
-        # Safely handle missing data
-        analysis_1 = result.get("Analysis 1") or "⚠ No Analysis 1 data generated."
-        analysis_2 = result.get("Analysis 2") or "⚠ No Analysis 2 data generated."
-        summary = result.get("Summary") or "⚠ No Final Summary generated."
+        # Store result persistently for the session
+        st.session_state.analysis_result = result
+        st.experimental_rerun()  # Force safe refresh showing results only once
 
-        # Display all three cleanly
-        st.subheader("🔍 Analysis 1")
-        st.write(analysis_1)
+# ============================================================
+# === Show Results (only after one run)
+# ============================================================
+if st.session_state.used_once and st.session_state.analysis_result:
+    result = st.session_state.analysis_result
+    analysis_1 = result.get("Analysis 1") or "⚠ No Analysis 1 data generated."
+    analysis_2 = result.get("Analysis 2") or "⚠ No Analysis 2 data generated."
+    summary = result.get("Summary") or "⚠ No Final Summary generated."
 
-        st.subheader("🔍 Analysis 2")
-        st.write(analysis_2)
+    st.subheader("🔍 Analysis 1")
+    st.write(analysis_1)
 
-        st.subheader("🧾 Final Strategic Summary")
-        st.write(summary)
+    st.subheader("🔍 Analysis 2")
+    st.write(analysis_2)
 
-        st.success("✅ Analysis complete. Flashmind Engine secured.")
+    st.subheader("🧾 Final Strategic Summary")
+    st.write(summary)
 
-# Restrict multiple runs per user session
-if st.session_state.used_once:
-    st.info("⚠ Demo analysis allowed one per user session, Kindly contact admin for detailed version.")
+    st.success("✅ Analysis complete. Flashmind Engine secured.")
+    st.info("⚠ Demo analysis allowed one per user session. Kindly contact admin for detailed version.")
+
