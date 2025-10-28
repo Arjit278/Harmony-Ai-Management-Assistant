@@ -1,6 +1,5 @@
 # === ⚡ Flashmind Analyzer (IP/User-Locked Edition) ===
 # Author: Arjit | Flashmind Systems © 2025
-# Deploy via: Streamlit Cloud + GitHub
 # One-use-per-IP enforced for 30 days
 
 import streamlit as st
@@ -215,6 +214,7 @@ if st.button("🚀 Run Flashmind Analysis"):
 
         st.success("✅ Complete. Demo for only one use per user. For detailed access, business intelligence & strategy, problem solving, analytics and multiple usage, kindly contact Admin.")
         register_user_lock(ip, lock_data)
+
 
 
 
