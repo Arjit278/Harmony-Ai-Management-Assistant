@@ -42,20 +42,32 @@ def load_lock_data():
     except Exception:
         return {}
 
-def save_lock_data(data):
-    """Save updated lock data back to Gist (or storage API)."""
-    try:
-        headers = {"Authorization": f"token {LOCK_API_KEY}"}
-        payload = {
-            "files": {
-                "lock.json": {
-                    "content": json.dumps(data, indent=2)
-                }
+def save_lock_data(lock_data):
+    """Save updated lock data to the GitHub Gist (lock.json)."""
+    headers = {
+        "Authorization": f"token {LOCK_API_KEY}",
+        "Accept": "application/vnd.github+json"
+    }
+
+    payload = {
+        "files": {
+            "lock.json": {
+                "content": json.dumps(lock_data, indent=4)
             }
         }
-        requests.patch(LOCK_FILE_URL, headers=headers, json=payload, timeout=10)
-    except Exception:
-        pass  # fail silently if storage fails
+    }
+
+    try:
+        response = requests.patch(LOCK_FILE_URL, headers=headers, json=payload, timeout=10)
+        if response.status_code == 200:
+            return True
+        else:
+            st.warning(f"⚠️ Failed to update Gist (HTTP {response.status_code})")
+            st.text(response.text)
+            return False
+    except Exception as e:
+        st.error(f"❌ Error saving lock data: {e}")
+        return False
 
 def is_user_locked(ip, lock_data):
     """Check if user is within 30-day lock window."""
@@ -198,4 +210,5 @@ if st.button("🚀 Run Flashmind Analysis"):
 
         st.success("✅ Complete. Demo for only one use per user. For detailed access and multiple usage, kindly contact Admin.")
         register_user_lock(ip, lock_data)
+
 
