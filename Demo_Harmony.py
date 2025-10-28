@@ -162,7 +162,7 @@ if st.sidebar.checkbox("🔧 Test Lock Connection (Admin Only)"):
 # ============================================================
 st.set_page_config(page_title="⚡ Flashmind Analyzer", page_icon="⚡")
 st.title("⚡ Flashmind Analyzer")
-st.caption("Enjoy your trial — harmonize your efforts with our Business/Industrial Intelligence and Analytics. (One-use-per-user) | © 2025 Flashmind Systems")
+st.caption("Enjoy your trial — harmonize your efforts with our Business/Industrial Intelligence and Analytics. (One-use-per-user with basic detailed version) | © 2025 Flashmind Systems")
 
 ip = get_user_ip()
 st.write(f"🔒 User ID: `{ip}`")
@@ -213,8 +213,9 @@ if st.button("🚀 Run Flashmind Analysis"):
         st.subheader("🧾 Final Strategic Summary")
         st.write(result["Summary"])
 
-        st.success("✅ Complete. Demo for only one use per user. For detailed access and multiple usage, kindly contact Admin.")
+        st.success("✅ Complete. Demo for only one use per user. For detailed access, business intelligence & strategy, problem solving, analytics and multiple usage, kindly contact Admin.")
         register_user_lock(ip, lock_data)
+
 
 
 
