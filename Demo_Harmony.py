@@ -247,28 +247,18 @@ if locked:
 st.markdown("### 📝 Step 1: Complete Access Form")
 st.write("Please fill out the short access form to continue:")
 
-# Show a button instead of just a link
-form_opened = st.button("📝 Open the Access Form")
+# Button that opens link
+st.link_button("📝 Open the Access Form", "https://41dt5g.share-na2.hsforms.com/2K9_0lqxDTzeMPY4ZyJkBLQ")
 
-if form_opened:
-    st.markdown(
-        """
-        <script>
-        window.open("https://41dt5g.share-na2.hsforms.com/2K9_0lqxDTzeMPY4ZyJkBLQ", "_blank");
-        </script>
-        """,
-        unsafe_allow_html=True
-    )
-    st.info("✅ Form opened in a new tab. Once you've submitted it, confirm below:")
+# Use session state to track if user clicked the button
+if "form_opened" not in st.session_state:
+    st.session_state.form_opened = False
 
-    # Now show the checkbox only after form button clicked
-    form_done = st.checkbox("✅ I have filled and submitted the access form")
+if st.button("✅ I have filled and submitted the form"):
+    st.session_state.form_opened = True
 
-    if not form_done:
-        st.warning("Please confirm the form submission before proceeding.")
-        st.stop()
-else:
-    st.warning("Please click 'Open the Access Form' to begin.")
+if not st.session_state.form_opened:
+    st.warning("Please open and submit the form before continuing.")
     st.stop()
 
 # ============================================================
@@ -293,5 +283,6 @@ if st.button("🚀 Run Flashmind Analysis"):
         st.success("✅ Analysis complete. Demo valid for one use per User ID.")
         # record lock (user_id only)
         register_user_lock(user_id, lock_data)
+
 
 
