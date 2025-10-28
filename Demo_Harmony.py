@@ -5,20 +5,17 @@
 import streamlit as st
 import requests
 import json
-import re
-import time
+import hashlib
 from datetime import datetime, timedelta
 
 # ============================================================
 # 🔒 Backend Keys
 # ============================================================
 ENGINE_KEY = st.secrets.get("FLASHMIND_KEY", None)
-LOCK_API_KEY = st.secrets.get("LOCK_API_KEY", None)  # Token for Gist or storage API
-
+LOCK_API_KEY = st.secrets.get("LOCK_API_KEY", None)  # GitHub token with gist permission
 LOCK_FILE_URL = "https://api.github.com/gists/7cd8a2b265c34b1592e88d1d5b863a8a"
-
-# Replace with your Gist ID
 LOCK_DURATION_DAYS = 30
+ADMIN_PASSWORD = "Harmony_Chand@9028"
 
 # ============================================================
 # === Utilities
@@ -31,8 +28,14 @@ def get_user_ip():
     except Exception:
         return "unknown"
 
+def mask_ip(ip):
+    """Return hashed User ID instead of raw IP."""
+    if ip == "unknown":
+        return "anonymous-user"
+    return hashlib.sha256(ip.encode()).hexdigest()[:10]
+
 def load_lock_data():
-    """Load existing lock data from remote JSON (GitHub Gist example)."""
+    """Load existing lock data from GitHub Gist."""
     try:
         headers = {"Authorization": f"token {LOCK_API_KEY}"}
         gist = requests.get(LOCK_FILE_URL, headers=headers, timeout=10).json()
@@ -40,37 +43,22 @@ def load_lock_data():
         if "lock.json" in files:
             content = files["lock.json"].get("content", "{}")
         else:
-            # Fallback in case GitHub renames the file automatically
             content = next(iter(files.values())).get("content", "{}")
         return json.loads(content)
     except Exception:
         return {}
 
 def save_lock_data(lock_data):
-    """Save updated lock data to the GitHub Gist (lock.json)."""
+    """Save updated lock data to GitHub Gist (lock.json)."""
     headers = {
         "Authorization": f"token {LOCK_API_KEY}",
         "Accept": "application/vnd.github+json"
     }
-
-    payload = {
-        "files": {
-            "lock.json": {
-                "content": json.dumps(lock_data, indent=4)
-            }
-        }
-    }
-
+    payload = {"files": {"lock.json": {"content": json.dumps(lock_data, indent=4)}}}
     try:
-        response = requests.patch(LOCK_FILE_URL, headers=headers, json=payload, timeout=10)
-        if response.status_code == 200:
-            return True
-        else:
-            st.warning(f"⚠️ Failed to update Gist (HTTP {response.status_code})")
-            st.text(response.text)
-            return False
-    except Exception as e:
-        st.error(f"❌ Error saving lock data: {e}")
+        res = requests.patch(LOCK_FILE_URL, headers=headers, json=payload, timeout=10)
+        return res.status_code == 200
+    except Exception:
         return False
 
 def is_user_locked(ip, lock_data):
@@ -84,10 +72,9 @@ def is_user_locked(ip, lock_data):
         return False
 
 def register_user_lock(ip, lock_data):
-    """Register IP with current timestamp."""
+    """Register user IP with current timestamp."""
     lock_data[ip] = str(datetime.utcnow())
     save_lock_data(lock_data)
-
 
 # ============================================================
 # === Flashmind Core
@@ -133,54 +120,89 @@ def flashmind_engine(prompt, key):
             return data["choices"][0]["message"]["content"].strip()
         except Exception:
             return "⚠ Engine unavailable."
-    a1 = call("groq/compound-mini")
-    a2 = call("llama-3.1-8b-instant")
-    s = call("groq/compound")
-    return {"Analysis 1": a1, "Analysis 2": a2, "Summary": s}
-
-# ============================================================
-# === Verify GitHub Gist Lock Connection (Admin Debug)
-# ============================================================
-if st.sidebar.checkbox("🔧 Test Lock Connection (Admin Only)"):
-    st.sidebar.write("Testing connection to GitHub Gist...")
-
-    try:
-        headers = {"Authorization": f"token {LOCK_API_KEY}"}
-        res = requests.get(LOCK_FILE_URL, headers=headers, timeout=10)
-        if res.status_code == 200:
-            gist_data = res.json()
-            file_content = next(iter(gist_data["files"].values()))["content"]
-            st.sidebar.success("✅ Connected to GitHub Gist successfully!")
-            st.sidebar.code(file_content, language="json")
-        else:
-            st.sidebar.error(f"❌ Gist access failed. HTTP {res.status_code}")
-    except Exception as e:
-        st.sidebar.error(f"⚠ Connection error: {e}")
+    return {
+        "Analysis 1": call("groq/compound-mini"),
+        "Analysis 2": call("llama-3.1-8b-instant"),
+        "Summary": call("groq/compound")
+    }
 
 # ============================================================
 # === Streamlit UI
 # ============================================================
 st.set_page_config(page_title="⚡ Flashmind Analyzer", page_icon="⚡")
 st.title("⚡ Flashmind Analyzer")
-st.caption("Enjoy your trial — harmonize your efforts with our Business/Industrial Intelligence and Analytics. (One-use-per-user with basic detailed version) | © 2025 Flashmind Systems")
+
+# === Connection Check (Silent Display)
+if LOCK_API_KEY:
+    st.caption("✅ Connected with Flashmind API")
+else:
+    st.caption("❌ Not connected with Flashmind API")
+
+st.caption("Enjoy your trial — harmonize your efforts with our Business/Industrial Intelligence and Analytics. (One-use-per-user basic version) | © 2025 Flashmind Systems")
 
 ip = get_user_ip()
-st.write(f"🔒 User ID: `{ip}`")
+user_id = mask_ip(ip)
+st.write(f"🔒 User ID: `{user_id}`")
 
 lock_data = load_lock_data()
 locked = is_user_locked(ip, lock_data)
 
+# ============================================================
+# === Admin Access (Hidden Panel)
+# ============================================================
+with st.sidebar.expander("🔐 Admin Access"):
+    admin_password = st.text_input("Enter Admin Password", type="password")
+    if admin_password == ADMIN_PASSWORD:
+        st.success("✅ Admin Access Granted")
+
+        # View all locked users
+        st.subheader("📜 Current Locked Users")
+        if not lock_data:
+            st.info("No users currently locked.")
+        else:
+            st.json(lock_data)
+
+        # Unlock specific user
+        unlock_ip = st.text_input("Enter IP to Unlock")
+        if st.button("🔓 Unlock User"):
+            if unlock_ip in lock_data:
+                del lock_data[unlock_ip]
+                save_lock_data(lock_data)
+                st.success(f"User `{unlock_ip}` unlocked successfully.")
+            else:
+                st.warning("IP not found in lock data.")
+
+        # Clear all locks
+        if st.button("🧹 Clear All Locks"):
+            save_lock_data({})
+            st.success("All locks cleared successfully!")
+
+        # Test connection manually
+        if st.button("🔧 Test Gist Connection"):
+            try:
+                headers = {"Authorization": f"token {LOCK_API_KEY}"}
+                res = requests.get(LOCK_FILE_URL, headers=headers, timeout=10)
+                if res.status_code == 200:
+                    st.success("✅ Connected to GitHub Gist successfully!")
+                else:
+                    st.error(f"❌ Connection failed (HTTP {res.status_code})")
+            except Exception as e:
+                st.error(f"⚠ Connection error: {e}")
+
+# ============================================================
+# === User Lock Check
+# ============================================================
 if locked:
     st.error("⚠ You have already used this demo in the past 30 days.\n\nPlease contact admin for enterprise access.")
     st.stop()
 
 # ============================================================
-# === Pre-Access Form Step
+# === Mandatory Pre-Access Form
 # ============================================================
 st.markdown("### 📝 Step 1: Complete Access Form")
 st.markdown("""
 Before using Flashmind Analyzer, please complete the short access form below.  
-👉 [Click here to open the form](https://41dt5g.share-na2.hsforms.com/2K9_0lqxDTzeMPY4ZyJkBLQ)  
+👉 [Open the Access Form](https://41dt5g.share-na2.hsforms.com/2K9_0lqxDTzeMPY4ZyJkBLQ)
 
 Once you’ve submitted it, check the box below to continue.
 """)
@@ -192,7 +214,7 @@ if not form_filled:
     st.stop()
 
 # ============================================================
-# === Continue to Flashmind Analysis
+# === Flashmind Analysis Section
 # ============================================================
 topic = st.text_input("📄 Enter Analysis Topic")
 
@@ -213,13 +235,5 @@ if st.button("🚀 Run Flashmind Analysis"):
         st.subheader("🧾 Final Strategic Summary")
         st.write(result["Summary"])
 
-        st.success("✅ Complete. Demo for only one use per user. For detailed access, business intelligence & strategy, problem solving, analytics and multiple usage, kindly contact Admin.")
+        st.success("✅ Complete. Demo valid for one use per user. For detailed access and analytics, kindly contact Admin.")
         register_user_lock(ip, lock_data)
-
-
-
-
-
-
-
-
