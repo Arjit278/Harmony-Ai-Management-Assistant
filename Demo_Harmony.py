@@ -20,6 +20,7 @@ LOCK_DURATION_DAYS = 30
 # ⚙️ Utilities
 # ============================================================
 def get_user_ip():
+    """Fetch the user’s public IP address."""
     try:
         res = requests.get("https://api.ipify.org?format=json", timeout=5)
         return res.json().get("ip", "unknown")
@@ -27,10 +28,11 @@ def get_user_ip():
         return "unknown"
 
 def mask_ip(ip):
+    """Generate a masked user ID from IP address."""
     return hashlib.sha256(ip.encode()).hexdigest()[:10] if ip != "unknown" else "anonymous-user"
 
 def load_lock_data():
-    """Load and auto-fix old format lock data."""
+    """Load lock.json and auto-upgrade any old entries."""
     try:
         headers = {"Authorization": f"token {LOCK_API_KEY}"}
         gist = requests.get(LOCK_FILE_URL, headers=headers, timeout=10).json()
@@ -42,10 +44,9 @@ def load_lock_data():
             content = next(iter(files.values()))["content"]
         data = json.loads(content)
 
-        # Auto-upgrade old entries
         fixed = {}
         for ip, value in data.items():
-            if isinstance(value, str):  # old format
+            if isinstance(value, str):  # old style (timestamp only)
                 fixed[ip] = {
                     "user_id": mask_ip(ip),
                     "timestamp": value
@@ -57,6 +58,7 @@ def load_lock_data():
         return {}
 
 def save_lock_data(data):
+    """Save updated lock data to GitHub Gist."""
     headers = {"Authorization": f"token {LOCK_API_KEY}", "Accept": "application/vnd.github+json"}
     payload = {"files": {"lock.json": {"content": json.dumps(data, indent=4)}}}
     try:
@@ -66,6 +68,7 @@ def save_lock_data(data):
         return False
 
 def is_user_locked(ip, data):
+    """Check whether a user’s IP is within the lock period."""
     if ip not in data:
         return False
     try:
@@ -75,6 +78,7 @@ def is_user_locked(ip, data):
         return False
 
 def register_user_lock(ip, data):
+    """Register (or update) a user’s lock."""
     data[ip] = {
         "user_id": mask_ip(ip),
         "timestamp": datetime.utcnow().isoformat()
@@ -110,6 +114,9 @@ with st.sidebar.expander("🔐 Admin Access", expanded=False):
     if password == ADMIN_PASSWORD:
         st.success("✅ Admin Access Granted")
 
+        # Reload latest lock file each time admin opens panel
+        lock_data = load_lock_data()
+
         if not lock_data:
             st.info("No locked users.")
         else:
@@ -121,9 +128,12 @@ with st.sidebar.expander("🔐 Admin Access", expanded=False):
                     dt = datetime.fromisoformat(ts)
                     date_str = dt.strftime("%Y-%m-%d")
                     time_str = dt.strftime("%H:%M:%S")
+                    days_ago = (datetime.now() - dt).days
                 except Exception:
-                    date_str, time_str = ts, ""
-                st.write(f"- 🧠 **User ID:** `{user}` | 🌐 **IP:** {ip_addr} | 📅 **Date:** {date_str} | 🕒 **Time:** {time_str}")
+                    date_str, time_str, days_ago = ts, "", ""
+                st.write(
+                    f"- 🧠 **User ID:** `{user}` | 🌐 **IP:** {ip_addr} | 📅 **Date:** {date_str} | 🕒 **Time:** {time_str} | ⏱️ **{days_ago} days ago**"
+                )
 
         st.markdown("---")
         unlock_key = st.text_input("Enter IP or User ID to Unlock")
@@ -135,6 +145,7 @@ with st.sidebar.expander("🔐 Admin Access", expanded=False):
                     del lock_data[ip_addr]
                     save_lock_data(lock_data)
                     st.success(f"✅ Unlocked `{unlock_key}` successfully.")
+                    st.rerun()  # 👈 instant reload for both user & admin
                     found = True
                     break
             if not found:
@@ -143,6 +154,7 @@ with st.sidebar.expander("🔐 Admin Access", expanded=False):
         if st.button("🧹 Clear All Locks"):
             save_lock_data({})
             st.success("✅ All locks cleared.")
+            st.rerun()
 
 # ============================================================
 # 🧩 User Lock Check
