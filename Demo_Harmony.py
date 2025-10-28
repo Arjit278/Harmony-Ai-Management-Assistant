@@ -188,6 +188,7 @@ locked = is_user_locked(user_id, lock_data)
 # ============================================================
 # 🔑 Admin Access Panel (secrets-based; disabled if no secret)
 # ============================================================
+from datetime import timezone, timedelta
 with st.sidebar.expander("🔐 Admin Access", expanded=False):
     if ADMIN_PASSWORD is None:
         st.warning("Admin access is disabled — set ADMIN_PASSWORD (or ADMIN_PASSWORD_BASE64) in Streamlit Secrets.")
@@ -206,9 +207,11 @@ with st.sidebar.expander("🔐 Admin Access", expanded=False):
                 for uid, entry in lock_data.items():
                     ts = entry.get("timestamp", "")
                     try:
+                        IST_OFFSET = timedelta(hours=5, minutes=30)
                         dt = datetime.fromisoformat(ts)
-                        date_str = dt.strftime("%Y-%m-%d")
-                        time_str = dt.strftime("%H:%M:%S")
+                        local_dt = dt.replace(tzinfo=timezone.utc) + IST_OFFSET
+                        date_str = local_dt.strftime("%Y-%m-%d")
+                        time_str = local_dt.strftime("%H:%M:%S")
                         days_ago = (datetime.now() - dt).days
                     except Exception:
                         date_str, time_str, days_ago = ts, "", "?"
@@ -277,3 +280,4 @@ if st.button("🚀 Run Flashmind Analysis"):
         st.success("✅ Analysis complete. Demo valid for one use per User ID.")
         # record lock (user_id only)
         register_user_lock(user_id, lock_data)
+
