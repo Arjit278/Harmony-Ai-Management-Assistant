@@ -247,20 +247,27 @@ if locked:
 st.markdown("### 📝 Step 1: Complete Access Form")
 st.write("Please fill out the short access form to continue:")
 
-# Button that opens link
-st.link_button("📝 Open the Access Form", "https://41dt5g.share-na2.hsforms.com/2K9_0lqxDTzeMPY4ZyJkBLQ")
+form_opened = st.button("📝 Open the Access Form")
 
-# Use session state to track if user clicked the button
-if "form_opened" not in st.session_state:
-    st.session_state.form_opened = False
+if form_opened:
+    st.markdown(
+        """
+        <a href="https://41dt5g.share-na2.hsforms.com/2K9_0lqxDTzeMPY4ZyJkBLQ" target="_blank">
+            🔗 Click here if the form didn’t open automatically
+        </a>
+        """,
+        unsafe_allow_html=True
+    )
+    st.info("✅ Form opened in a new tab. Once submitted, confirm below:")
 
-if st.button("✅ I have filled and submitted the form"):
-    st.session_state.form_opened = True
+    form_done = st.checkbox("✅ I have filled and submitted the access form")
 
-if not st.session_state.form_opened:
-    st.warning("Please open and submit the form before continuing.")
+    if not form_done:
+        st.warning("Please confirm the form submission before proceeding.")
+        st.stop()
+else:
+    st.warning("Please click 'Open the Access Form' to begin.")
     st.stop()
-
 # ============================================================
 # ⚡ Flashmind Analysis Engine (runs when admin/unlocked user clicks button)
 # ============================================================
@@ -283,6 +290,7 @@ if st.button("🚀 Run Flashmind Analysis"):
         st.success("✅ Analysis complete. Demo valid for one use per User ID.")
         # record lock (user_id only)
         register_user_lock(user_id, lock_data)
+
 
 
 
