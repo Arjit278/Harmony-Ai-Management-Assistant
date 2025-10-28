@@ -244,29 +244,39 @@ if locked:
 # ============================================================
 # 📝 Pre-Access Form
 # ============================================================
+import streamlit as st
+
 st.markdown("### 📝 Step 1: Complete Access Form")
 st.write("Please fill out the short access form to continue:")
 
-form_opened = st.button("📝 Open the Access Form")
+# Use a styled HTML button link
+st.markdown("""
+    <style>
+        .form-btn {
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            padding: 0.6em 1.2em;
+            text-align: center;
+            text-decoration: none;
+            display: inline-block;
+            font-size: 1em;
+            border-radius: 8px;
+            cursor: pointer;
+        }
+        .form-btn:hover {
+            background-color: #45a049;
+        }
+    </style>
+    <a href="https://41dt5g.share-na2.hsforms.com/2K9_0lqxDTzeMPY4ZyJkBLQ" target="_blank" class="form-btn">📝 Open the Access Form</a>
+""", unsafe_allow_html=True)
 
-if form_opened:
-    st.markdown(
-        """
-        <a href="https://41dt5g.share-na2.hsforms.com/2K9_0lqxDTzeMPY4ZyJkBLQ" target="_blank">
-            🔗 Click here if the form didn’t open automatically
-        </a>
-        """,
-        unsafe_allow_html=True
-    )
-    st.info("✅ Form opened in a new tab. Once submitted, confirm below:")
+# Once clicked (user returns and confirms)
+st.info("✅ Once you've submitted the form, check below to continue:")
+form_done = st.checkbox("✅ I have filled and submitted the access form")
 
-    form_done = st.checkbox("✅ I have filled and submitted the access form")
-
-    if not form_done:
-        st.warning("Please confirm the form submission before proceeding.")
-        st.stop()
-else:
-    st.warning("Please click 'Open the Access Form' to begin.")
+if not form_done:
+    st.warning("Please confirm the form submission before proceeding.")
     st.stop()
 # ============================================================
 # ⚡ Flashmind Analysis Engine (runs when admin/unlocked user clicks button)
@@ -290,6 +300,7 @@ if st.button("🚀 Run Flashmind Analysis"):
         st.success("✅ Analysis complete. Demo valid for one use per User ID.")
         # record lock (user_id only)
         register_user_lock(user_id, lock_data)
+
 
 
 
