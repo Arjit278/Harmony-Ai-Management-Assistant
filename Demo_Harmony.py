@@ -81,6 +81,13 @@ def save_lock_data(data):
         return False
 
 def load_lock_data():
+    """
+    Load lock data from Gist and normalize all entries.
+    Handles legacy and current formats safely:
+      - {"35.197.92.111": "timestamp"}  →  {"<masked>": {"timestamp": "..."}}
+      - {"user_id": {"timestamp": "..."}}
+      - Keeps 10-char masked IDs unchanged.
+    """
     try:
         headers = {"Authorization": f"token {LOCK_API_KEY}"}
         res = requests.get(LOCK_FILE_URL, headers=headers, timeout=10)
@@ -90,14 +97,31 @@ def load_lock_data():
         raw = json.loads(content)
     except Exception:
         raw = {}
+
     fixed = {}
     for k, v in raw.items():
         if isinstance(v, str):
-            fixed[mask_ip(k)] = {"timestamp": normalize_timestamp(v)}
+            # If already hashed (10 hex chars), keep key
+            if len(k) == 10 and all(c in "0123456789abcdef" for c in k.lower()):
+                uid = k
+            else:
+                uid = mask_ip(k)
+            fixed[uid] = {"timestamp": normalize_timestamp(v)}
+
         elif isinstance(v, dict):
             uid = v.get("user_id", k)
             ts = v.get("timestamp", datetime.utcnow().isoformat())
-            fixed[mask_ip(uid)] = {"timestamp": normalize_timestamp(ts)}
+            # Keep hashed IDs as is; hash the rest
+            if len(uid) == 10 and all(c in "0123456789abcdef" for c in uid.lower()):
+                fixed[uid] = {"timestamp": normalize_timestamp(ts)}
+            else:
+                fixed[mask_ip(uid)] = {"timestamp": normalize_timestamp(ts)}
+
+        else:
+            # Unexpected structure → fallback
+            fixed[mask_ip(k)] = {"timestamp": datetime.utcnow().isoformat()}
+
+    # Save normalized structure back to Gist
     save_lock_data(fixed)
     return fixed
 
@@ -230,7 +254,7 @@ if is_user_locked(user_id, lock_data):
 
 # ------------------------
 # 📝 Access Form
-# ------------------------
+# ------------------------    
 st.markdown("### 📝 Step 1: Complete Access Form")
 form_url = "https://41dt5g.share-na2.hsforms.com/2K9_0lqxDTzeMPY4ZyJkBLQ"
 
@@ -275,3 +299,4 @@ if st.button("🚀 Run Flashmind Analysis"):
 
         register_user_lock(user_id, lock_data)
         st.success("✅ Analysis complete. Demo locked for 30 days.")
+
