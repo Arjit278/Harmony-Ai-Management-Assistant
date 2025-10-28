@@ -11,10 +11,6 @@ import re
 # ============================================================
 # 🔒 Hidden Backend Key (Configured in Streamlit Secrets)
 # ============================================================
-# In Streamlit Cloud:
-# Settings → Secrets → Add:
-#   FLASHMIND_KEY = "your_actual_key_here"
-
 ENGINE_KEY = st.secrets.get("FLASHMIND_KEY", None)
 
 # ============================================================
@@ -78,7 +74,11 @@ This analysis follows *Arjit's Theory of Problem Solving* (IPI India Patent 2025
 def flashmind_engine(prompt: str, api_key: str):
     """Internal call to Flashmind backend."""
     if not api_key:
-        return {"Summary": "❌ Flashmind Key not configured."}
+        return {
+            "Analysis 1": "❌ Flashmind Key not configured.",
+            "Analysis 2": "",
+            "Summary": ""
+        }
 
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
 
@@ -98,25 +98,24 @@ def flashmind_engine(prompt: str, api_key: str):
         except Exception as e:
             return f"⚠ Engine error: {e}"
 
-    st.info("Running Flashmind Layer 1 Analysis...")
-    layer1 = call_model("groq/compound-mini", prompt)
-
-    st.info("Running Flashmind Layer 2 Analysis...")
-    layer2 = call_model("llama-3.1-8b-instant", prompt)
+    # Run analysis layers
+    out1 = call_model("groq/compound-mini", prompt)
+    out2 = call_model("llama-3.1-8b-instant", prompt)
 
     blend_prompt = f"""
 Combine the following analyses into a single strategic report for 2025:
 
-Layer 1:
-{layer1}
+Analysis 1:
+{out1}
 
-Layer 2:
-{layer2}
+Analysis 2:
+{out2}
 
 Focus on actionable insights, quantified causes, and 2025 relevance.
 """
     summary = call_model("groq/compound", blend_prompt)
-    return {"Layer 1": layer1, "Layer 2": layer2, "Summary": summary}
+
+    return {"Analysis 1": out1, "Analysis 2": out2, "Summary": summary}
 
 # ============================================================
 # === Streamlit UI (Brand: Flashmind Only)
@@ -131,6 +130,9 @@ if "used_once" not in st.session_state:
 
 topic = st.text_input("📄 Enter Analysis Topic (e.g., 'AI Market Forecast 2025')")
 
+# ============================================================
+# === Run Analysis (Locked One-Use Mode)
+# ============================================================
 if st.button("🚀 Run Flashmind Analysis", disabled=st.session_state.used_once):
     if not topic.strip():
         st.warning("Please enter a topic.")
@@ -140,26 +142,24 @@ if st.button("🚀 Run Flashmind Analysis", disabled=st.session_state.used_once)
             prompt = build_locked_prompt(topic)
             result = flashmind_engine(prompt, ENGINE_KEY)
 
-        # --- Defensive safety check ---
-        if not isinstance(result, dict):
-            st.error("❌ Unexpected response from Flashmind Engine.")
-        else:
-            layer1 = result.get("Layer 1", "⚠ No Layer 1 data generated.")
-            layer2 = result.get("Layer 2", "⚠ No Layer 2 data generated.")
-            summary = result.get("Summary", "⚠ No summary available.")
+        # Safely handle missing data
+        analysis_1 = result.get("Analysis 1") or "⚠ No Analysis 1 data generated."
+        analysis_2 = result.get("Analysis 2") or "⚠ No Analysis 2 data generated."
+        summary = result.get("Summary") or "⚠ No Final Summary generated."
 
-            st.subheader("🔍 Layer 1 Analysis")
-            st.write(layer1)
+        # Display all three cleanly
+        st.subheader("🔍 Analysis 1")
+        st.write(analysis_1)
 
-            st.subheader("🔍 Layer 2 Analysis")
-            st.write(layer2)
+        st.subheader("🔍 Analysis 2")
+        st.write(analysis_2)
 
-            st.subheader("🧾 Final Strategic Summary")
-            st.write(summary)
+        st.subheader("🧾 Final Strategic Summary")
+        st.write(summary)
 
-            st.success("✅ Analysis complete. Flashmind Engine secured.")
+        st.success("✅ Analysis complete. Flashmind Engine secured.")
 
+# Restrict multiple runs per user session
 if st.session_state.used_once:
-    st.warning("⚠ Only one analysis allowed per user session.")
-
+    st.info("⚠ Demo analysis allowed one per user session, Kindly contact admin for detailed version.")
 
