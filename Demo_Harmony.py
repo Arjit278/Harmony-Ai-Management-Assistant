@@ -81,8 +81,9 @@ def is_user_locked(ip, lock_data):
 
 def register_user_lock(ip, lock_data):
     """Register IP with current timestamp."""
-    lock_data[ip] = datetime.now().isoformat()
+    lock_data[ip] = str(datetime.utcnow())
     save_lock_data(lock_data)
+
 
 # ============================================================
 # === Flashmind Core
@@ -210,5 +211,6 @@ if st.button("🚀 Run Flashmind Analysis"):
 
         st.success("✅ Complete. Demo for only one use per user. For detailed access and multiple usage, kindly contact Admin.")
         register_user_lock(ip, lock_data)
+
 
 
