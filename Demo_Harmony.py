@@ -1,8 +1,5 @@
 # === ⚡ Flashmind Analyzer (Final Cached + Stable Lock Edition) ===
 # Author: Arjit | Flashmind Systems © 2025
-#
-# Streamlit Secrets Required:
-# FLASHMIND_KEY, LOCK_API_KEY, ADMIN_PASSWORD (or ADMIN_PASSWORD_BASE64)
 
 import streamlit as st
 import requests, json, hashlib, base64, uuid
@@ -16,7 +13,6 @@ LOCK_API_KEY = st.secrets.get("LOCK_API_KEY")
 LOCK_FILE_URL = "https://api.github.com/gists/7cd8a2b265c34b1592e88d1d5b863a8a"
 LOCK_DURATION_DAYS = 30
 
-# Admin password
 _ADMIN_PLAIN = st.secrets.get("ADMIN_PASSWORD")
 if not _ADMIN_PLAIN and st.secrets.get("ADMIN_PASSWORD_BASE64"):
     try:
@@ -99,26 +95,28 @@ def save_lock_data(data):
     try:
         res = requests.patch(LOCK_FILE_URL, headers=headers, json=payload, timeout=15)
         if res.status_code == 200:
-            st.toast("✅ Lock data updated successfully.", icon="🔓")
+            st.toast("✅ Lock data updated successfully.", icon="🔐")
+            cached_load_lock_data.clear()  # 💥 Force refresh cache
             return True
+        elif res.status_code == 403:
+            st.error("❌ GitHub API rate limit reached. Lock data not updated.")
         else:
-            st.error(f"❌ Failed to update lock data: {res.status_code}")
-            return False
+            st.error(f"❌ Lock save failed ({res.status_code}): {res.text[:120]}")
     except Exception as e:
         st.error(f"⚠ Error saving lock data: {e}")
-        return False
+    return False
 
-@st.cache_data(ttl=120)
+@st.cache_data(ttl=60)
 def cached_load_lock_data():
-    """Cached version of load_lock_data() to reduce GitHub API calls."""
     return load_lock_data()
 
 def load_lock_data():
     try:
         headers = {"Authorization": f"token {LOCK_API_KEY}"}
         res = requests.get(LOCK_FILE_URL, headers=headers, timeout=10)
-        gist = res.json() if res.status_code == 200 else {}
-        files = gist.get("files", {})
+        if res.status_code != 200:
+            return {}
+        files = res.json().get("files", {})
         content = files.get("lock.json", {}).get("content", "{}")
         raw = json.loads(content)
     except Exception:
@@ -126,17 +124,22 @@ def load_lock_data():
 
     fixed = {}
     for k, v in raw.items():
-        if isinstance(v, str):
-            uid = k if len(k) == 10 else mask_ip(k)
-            fixed[uid] = {"user_id": uid, "socket_id": "", "timestamp": normalize_timestamp(v)}
-        elif isinstance(v, dict):
+        if isinstance(v, dict):
             uid = v.get("user_id", k)
             sid = v.get("socket_id", "")
             ts = v.get("timestamp", datetime.utcnow().isoformat())
-            fixed[uid] = {"user_id": uid, "socket_id": sid, "timestamp": normalize_timestamp(ts)}
+            fixed[uid] = {
+                "user_id": uid,
+                "socket_id": sid,
+                "timestamp": normalize_timestamp(ts),
+            }
         else:
             uid = mask_ip(str(k))
-            fixed[uid] = {"user_id": uid, "socket_id": "", "timestamp": datetime.utcnow().isoformat()}
+            fixed[uid] = {
+                "user_id": uid,
+                "socket_id": "",
+                "timestamp": datetime.utcnow().isoformat(),
+            }
 
     return fixed
 
@@ -178,13 +181,16 @@ def is_user_locked(user_id, socket_id, data):
     return False
 
 def register_user_lock(user_id, socket_id, data):
-    if not is_user_locked(user_id, socket_id, data):
-        data[user_id] = {
-            "user_id": user_id,
-            "socket_id": socket_id,
-            "timestamp": datetime.utcnow().isoformat(),
-        }
-        save_lock_data(data)
+    """Register lock only if GitHub update succeeds."""
+    data[user_id] = {
+        "user_id": user_id,
+        "socket_id": socket_id,
+        "timestamp": datetime.utcnow().isoformat(),
+    }
+    if save_lock_data(data):
+        st.success("✅ Lock successfully recorded for 30 days.")
+    else:
+        st.warning("⚠ Lock not saved (GitHub API issue).")
 
 # ------------------------
 # Flashmind Engine
@@ -217,6 +223,7 @@ def flashmind_engine(prompt, key):
     if not key:
         return {"Analysis 1": "❌ Engine key missing", "Analysis 2": "⚠ None", "Summary": "⚠ None"}
     headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
+
     def call(model):
         try:
             res = requests.post(
@@ -228,6 +235,7 @@ def flashmind_engine(prompt, key):
             return res.json()["choices"][0]["message"]["content"].strip()
         except Exception:
             return "⚠ Engine unavailable."
+
     return {
         "Analysis 1": call("groq/compound-mini"),
         "Analysis 2": call("llama-3.1-8b-instant"),
@@ -258,7 +266,7 @@ lock_data = deduplicate_locks(cached_load_lock_data())
 # ------------------------
 with st.sidebar.expander("🔐 Admin Access", expanded=True):
     if not ADMIN_PASSWORD:
-        st.warning("Admin access disabled. Add ADMIN_PASSWORD or ADMIN_PASSWORD_BASE64 in secrets.")
+        st.warning("Admin access disabled. Add ADMIN_PASSWORD in secrets.")
     else:
         pwd = st.text_input("Enter Admin Password", type="password")
         if pwd == ADMIN_PASSWORD:
@@ -274,9 +282,8 @@ with st.sidebar.expander("🔐 Admin Access", expanded=True):
                     if parsed:
                         ist = parsed + timedelta(hours=5, minutes=30)
                         days_ago = (datetime.utcnow() - parsed).days
-                        st.write(f"- 🧠 `{uid}` | 📅 {ist:%Y-%m-%d} | 🕒 {ist:%H:%M:%S} | ⏱️ {days_ago} days ago")
-                    else:
-                        st.write(f"- 🧠 `{uid}` | 🕒 Invalid timestamp (`{ts_str}`)")
+                        sid = val.get("socket_id", "")
+                        st.write(f"- 🧠 `{uid}` | 🔌 `{sid}` | 📅 {ist:%Y-%m-%d} | 🕒 {ist:%H:%M:%S} | ⏱️ {days_ago} days ago")
             st.markdown("---")
             unlock_input = st.text_input("Enter User ID / IP / Socket ID to Unlock")
             if st.button("🔓 Unlock User"):
@@ -286,8 +293,6 @@ with st.sidebar.expander("🔐 Admin Access", expanded=True):
                         st.rerun()
                     else:
                         st.warning("User ID / IP / Socket ID not found.")
-                else:
-                    st.warning("Please enter a valid value.")
             if st.button("🧹 Clear All Locks"):
                 save_lock_data({})
                 st.success("✅ All locks cleared.")
@@ -321,10 +326,7 @@ st.markdown(
     """,
     unsafe_allow_html=True,
 )
-try:
-    st.link_button("Click here if form didn’t open", form_url)
-except Exception:
-    st.markdown(f"[Click here if form didn’t open]({form_url})", unsafe_allow_html=True)
+st.link_button("Click here if form didn’t open", form_url)
 
 if not st.checkbox("✅ I have filled and submitted the access form"):
     st.warning("Please confirm after submitting the form.")
@@ -357,14 +359,13 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
-
 topic = st.text_input("", placeholder="Type your analysis topic here...")
 
 # ------------------------
 # Run Analysis
 # ------------------------
 if st.button("🚀 Run Flashmind Analysis"):
-    lock_data = cached_load_lock_data()
+    lock_data = load_lock_data()
     if is_user_locked(user_id, socket_id, lock_data):
         st.error("🚫 You’re locked for 30 days. Please contact admin.")
         st.stop()
