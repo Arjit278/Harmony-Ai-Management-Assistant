@@ -1,7 +1,7 @@
-# === ⚡ Flashmind Analyzer (Final Stable + Persistent Unlock Edition) ===
+# === ⚡ Flashmind Analyzer (Final Cached + Stable Lock Edition) ===
 # Author: Arjit | Flashmind Systems © 2025
 #
-# NOTE: Put these in Streamlit Secrets:
+# Streamlit Secrets Required:
 # FLASHMIND_KEY, LOCK_API_KEY, ADMIN_PASSWORD (or ADMIN_PASSWORD_BASE64)
 
 import streamlit as st
@@ -16,7 +16,7 @@ LOCK_API_KEY = st.secrets.get("LOCK_API_KEY")
 LOCK_FILE_URL = "https://api.github.com/gists/7cd8a2b265c34b1592e88d1d5b863a8a"
 LOCK_DURATION_DAYS = 30
 
-# Admin password: plain or base64 fallback
+# Admin password
 _ADMIN_PLAIN = st.secrets.get("ADMIN_PASSWORD")
 if not _ADMIN_PLAIN and st.secrets.get("ADMIN_PASSWORD_BASE64"):
     try:
@@ -36,17 +36,14 @@ def get_user_ip():
         return "unknown"
 
 def mask_ip(ip):
-    """Deterministic masked ID derived from IP (10 hex chars)."""
     return hashlib.sha256(ip.encode()).hexdigest()[:10] if ip != "unknown" else "anonymous"
 
 def get_socket_id():
-    """Persistent per-browser-session socket/session id (stored in session_state)."""
     if "socket_id" not in st.session_state:
         st.session_state["socket_id"] = hashlib.sha256(str(uuid.uuid4()).encode()).hexdigest()[:10]
     return st.session_state["socket_id"]
 
 def parse_timestamp(ts_str):
-    """Try safe parsing of many timestamp formats; return naive UTC datetime or None."""
     if not ts_str or not isinstance(ts_str, str):
         return None
     try:
@@ -56,11 +53,10 @@ def parse_timestamp(ts_str):
         return dt
     except Exception:
         pass
-    formats = [
+    for fmt in [
         "%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M:%S.%f",
         "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d", "%d-%m-%Y %H:%M:%S", "%d/%m/%Y %H:%M:%S"
-    ]
-    for fmt in formats:
+    ]:
         try:
             return datetime.strptime(ts_str, fmt)
         except Exception:
@@ -68,7 +64,6 @@ def parse_timestamp(ts_str):
     return None
 
 def normalize_timestamp(ts_input):
-    """Return an ISO-8601 UTC string for storage, robust to input shapes."""
     if isinstance(ts_input, str):
         parsed = parse_timestamp(ts_input)
         return parsed.replace(tzinfo=None).isoformat() if parsed else datetime.utcnow().isoformat()
@@ -81,10 +76,6 @@ def normalize_timestamp(ts_input):
 # Gist read/write (store user_id, socket_id, timestamp)
 # ------------------------
 def save_lock_data(data):
-    """
-    Force-overwrite the lock.json file on the Gist.
-    Includes validation and success/failure indication in Streamlit.
-    """
     clean = {
         uid: {
             "user_id": v.get("user_id", uid),
@@ -101,28 +92,28 @@ def save_lock_data(data):
 
     payload = {
         "files": {
-            "lock.json": {
-                "content": json.dumps(clean, indent=4, ensure_ascii=False)
-            }
+            "lock.json": {"content": json.dumps(clean, indent=4, ensure_ascii=False)}
         }
     }
 
     try:
-        # Force overwrite (PATCH is allowed, but we’ll confirm success)
         res = requests.patch(LOCK_FILE_URL, headers=headers, json=payload, timeout=15)
         if res.status_code == 200:
             st.toast("✅ Lock data updated successfully.", icon="🔓")
             return True
         else:
             st.error(f"❌ Failed to update lock data: {res.status_code}")
-            st.code(res.text)
             return False
     except Exception as e:
         st.error(f"⚠ Error saving lock data: {e}")
         return False
 
+@st.cache_data(ttl=120)
+def cached_load_lock_data():
+    """Cached version of load_lock_data() to reduce GitHub API calls."""
+    return load_lock_data()
+
 def load_lock_data():
-    """Load + normalize + clean lock data from gist."""
     try:
         headers = {"Authorization": f"token {LOCK_API_KEY}"}
         res = requests.get(LOCK_FILE_URL, headers=headers, timeout=10)
@@ -136,32 +127,23 @@ def load_lock_data():
     fixed = {}
     for k, v in raw.items():
         if isinstance(v, str):
-            if len(k) == 10 and all(c in "0123456789abcdef" for c in k.lower()):
-                uid = k
-            else:
-                uid = mask_ip(k)
+            uid = k if len(k) == 10 else mask_ip(k)
             fixed[uid] = {"user_id": uid, "socket_id": "", "timestamp": normalize_timestamp(v)}
         elif isinstance(v, dict):
-            stored_uid = v.get("user_id", k)
-            stored_sid = v.get("socket_id", "") or ""
+            uid = v.get("user_id", k)
+            sid = v.get("socket_id", "")
             ts = v.get("timestamp", datetime.utcnow().isoformat())
-            if isinstance(stored_uid, str) and len(stored_uid) == 10 and all(c in "0123456789abcdef" for c in stored_uid.lower()):
-                uid = stored_uid
-            else:
-                uid = mask_ip(stored_uid)
-            fixed[uid] = {"user_id": uid, "socket_id": stored_sid, "timestamp": normalize_timestamp(ts)}
+            fixed[uid] = {"user_id": uid, "socket_id": sid, "timestamp": normalize_timestamp(ts)}
         else:
             uid = mask_ip(str(k))
             fixed[uid] = {"user_id": uid, "socket_id": "", "timestamp": datetime.utcnow().isoformat()}
 
-    save_lock_data(fixed)
     return fixed
 
 # ------------------------
 # Lock helpers
 # ------------------------
 def deduplicate_locks(data):
-    """Remove duplicate entries with same socket_id or user_id."""
     seen_uids, seen_sids, cleaned = {}, {}, {}
     for uid, v in data.items():
         sid = v.get("socket_id", "")
@@ -176,7 +158,6 @@ def deduplicate_locks(data):
     return cleaned
 
 def unlock_user(target, data):
-    """Unlock any user by user_id, socket_id, or IP (masked)."""
     to_remove = []
     for uid, entry in data.items():
         if uid == target or entry.get("socket_id") == target or uid == mask_ip(target):
@@ -189,16 +170,14 @@ def unlock_user(target, data):
     return False
 
 def is_user_locked(user_id, socket_id, data):
-    """Return True if either user_id or socket_id is present within lock window."""
     for entry in data.values():
-        if entry.get("user_id") == user_id or (socket_id and entry.get("socket_id") == socket_id):
+        if entry.get("user_id") == user_id or entry.get("socket_id") == socket_id:
             ts = parse_timestamp(entry.get("timestamp"))
             if ts and (datetime.utcnow() - ts < timedelta(days=LOCK_DURATION_DAYS)):
                 return True
     return False
 
 def register_user_lock(user_id, socket_id, data):
-    """Register a lock entry only if not already locked."""
     if not is_user_locked(user_id, socket_id, data):
         data[user_id] = {
             "user_id": user_id,
@@ -208,7 +187,7 @@ def register_user_lock(user_id, socket_id, data):
         save_lock_data(data)
 
 # ------------------------
-# Flashmind Core (unchanged)
+# Flashmind Engine
 # ------------------------
 def get_references(query):
     return [
@@ -217,7 +196,7 @@ def get_references(query):
         f"https://www.mckinsey.com/{query.replace(' ', '-')}-insights-2025",
     ]
 
-def build_locked_prompt(topic: str):
+def build_locked_prompt(topic):
     refs_md = "\n".join([f"- [{r}]({r})" for r in get_references(topic)])
     return f"""
 Analyze topic **{topic}** (2025 Edition) using Flashmind Strategic 360.
@@ -272,7 +251,7 @@ user_id = mask_ip(ip)
 socket_id = get_socket_id()
 st.write(f"🔒 User ID: `{user_id}` | 🔌 Socket ID: `{socket_id}`")
 
-lock_data = deduplicate_locks(load_lock_data())
+lock_data = deduplicate_locks(cached_load_lock_data())
 
 # ------------------------
 # 🔐 Admin Access
@@ -285,7 +264,6 @@ with st.sidebar.expander("🔐 Admin Access", expanded=True):
         if pwd == ADMIN_PASSWORD:
             st.success("✅ Admin Access Granted")
             lock_data = deduplicate_locks(load_lock_data())
-
             if not lock_data:
                 st.info("No locked users yet.")
             else:
@@ -296,12 +274,9 @@ with st.sidebar.expander("🔐 Admin Access", expanded=True):
                     if parsed:
                         ist = parsed + timedelta(hours=5, minutes=30)
                         days_ago = (datetime.utcnow() - parsed).days
-                        st.write(
-                            f"- 🧠 `{uid}` | 📅 {ist.strftime('%Y-%m-%d')} | 🕒 {ist.strftime('%H:%M:%S')} | ⏱️ {days_ago} days ago"
-                        )
+                        st.write(f"- 🧠 `{uid}` | 📅 {ist:%Y-%m-%d} | 🕒 {ist:%H:%M:%S} | ⏱️ {days_ago} days ago")
                     else:
                         st.write(f"- 🧠 `{uid}` | 🕒 Invalid timestamp (`{ts_str}`)")
-
             st.markdown("---")
             unlock_input = st.text_input("Enter User ID / IP / Socket ID to Unlock")
             if st.button("🔓 Unlock User"):
@@ -310,10 +285,9 @@ with st.sidebar.expander("🔐 Admin Access", expanded=True):
                         st.success(f"✅ Unlocked `{unlock_input.strip()}` successfully.")
                         st.rerun()
                     else:
-                        st.warning("User ID / IP / Socket ID not found in lock file.")
+                        st.warning("User ID / IP / Socket ID not found.")
                 else:
-                    st.warning("Please enter a valid User ID, IP, or Socket ID.")
-
+                    st.warning("Please enter a valid value.")
             if st.button("🧹 Clear All Locks"):
                 save_lock_data({})
                 st.success("✅ All locks cleared.")
@@ -331,7 +305,7 @@ if is_user_locked(user_id, socket_id, lock_data):
 # ------------------------
 # Access Form
 # ------------------------
-st.markdown("### 📝 Steps: Complete Access Form, tick, enter the problem and click on run analysis")
+st.markdown("### 📝 Step 1: Complete Access Form")
 form_url = "https://41dt5g.share-na2.hsforms.com/2K9_0lqxDTzeMPY4ZyJkBLQ"
 st.markdown(
     f"""
@@ -357,9 +331,8 @@ if not st.checkbox("✅ I have filled and submitted the access form"):
     st.stop()
 
 # ------------------------
-# Analysis Runner (patched with admin override)
+# Prominent Topic Input
 # ------------------------
-# --- Prominent Topic Input ---
 st.markdown(
     """
     <style>
@@ -387,22 +360,19 @@ st.markdown(
 
 topic = st.text_input("", placeholder="Type your analysis topic here...")
 
-
-# check if admin override active in this session
-if "admin_override" not in st.session_state:
-    st.session_state["admin_override"] = False
-
+# ------------------------
+# Run Analysis
+# ------------------------
 if st.button("🚀 Run Flashmind Analysis"):
-    # reload and check lock unless admin override is active
-    lock_data = load_lock_data()
-    if not st.session_state["admin_override"] and is_user_locked(user_id, socket_id, lock_data):
+    lock_data = cached_load_lock_data()
+    if is_user_locked(user_id, socket_id, lock_data):
         st.error("🚫 You’re locked for 30 days. Please contact admin.")
         st.stop()
 
     if not topic.strip():
         st.warning("Please enter a topic.")
     else:
-        st.info("Sip your coffee... Processing via Flashmind Engine.")
+        st.info("Sip your coffee... Processing via Flashmind Engine ☕")
         prompt = build_locked_prompt(topic)
         result = flashmind_engine(prompt, ENGINE_KEY)
 
@@ -413,13 +383,6 @@ if st.button("🚀 Run Flashmind Analysis"):
         st.subheader("🧾 Final Strategic Summary")
         st.write(result["Summary"])
 
-        # only lock if not overridden by admin
-        if not st.session_state["admin_override"]:
-            register_user_lock(user_id, socket_id, lock_data)
-            st.success("✅ Analysis complete. Demo locked for 30 days.")
-            st.rerun()
-        else:
-            st.success("✅ Analysis complete (admin override — not locked).")
-
-
-
+        register_user_lock(user_id, socket_id, lock_data)
+        st.success("✅ Analysis complete. Demo locked for 30 days.")
+        st.rerun()
