@@ -291,16 +291,26 @@ with st.sidebar.expander("🔐 Admin Access", expanded=True):
                 if not unlock_input.strip():
                     st.warning("Please enter a valid User ID, IP, or Socket ID.")
                 else:
-                    # Match either masked, IP, or socket ID
-                    found_key = None
-                    for uid in lock_data.keys():
-                        if uid == unlock_input.strip() or uid == mask_ip(unlock_input.strip()):
-                            found_key = uid
-                            break
-                    if found_key:
-                        del lock_data[found_key]
+                    unlock_input = unlock_input.strip()
+                    masked_input = mask_ip(unlock_input)
+
+                    # Find all matching entries by any pattern
+                    keys_to_delete = []
+                    for uid, val in lock_data.items():
+                        if (
+                            uid == unlock_input
+                            or uid == masked_input
+                            or val.get("user_id") == unlock_input
+                            or val.get("user_id") == masked_input
+                            or val.get("socket_id") == unlock_input
+                        ):
+                            keys_to_delete.append(uid)
+
+                    if keys_to_delete:
+                        for k in keys_to_delete:
+                            del lock_data[k]
                         save_lock_data(lock_data)
-                        st.success(f"✅ Unlocked `{unlock_input.strip()}` successfully.")
+                        st.success(f"✅ Unlocked {len(keys_to_delete)} matching record(s) for `{unlock_input}`.")
                         st.rerun()
                     else:
                         st.warning("User ID / IP / Socket ID not found in lock file.")
@@ -380,4 +390,5 @@ if st.button("🚀 Run Flashmind Analysis"):
         register_user_lock(user_id, socket_id, lock_data)
         st.success("✅ Analysis complete. Demo locked for 30 days.")
         st.rerun()
+
 
