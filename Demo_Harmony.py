@@ -150,36 +150,58 @@ def force_unlock_current(user_id, socket_id):
 # ------------------------
 # ⚡ Flashmind Engine
 # ------------------------
-def build_prompt(topic):
-    refs = [
-        f"https://www.mckinsey.com/{topic.replace(' ', '-')}-insights-2025",
-        f"https://www.weforum.org/agenda/{topic.replace(' ', '-')}-trends",
+def get_references(query):
+    return [
+        f"https://www.brookings.edu/research/{query.replace(' ', '-')}-2025",
+        f"https://www.weforum.org/agenda/{query.replace(' ', '-')}-trends",
+        f"https://www.mckinsey.com/{query.replace(' ', '-')}-insights-2025",
+        f"https://www.hbs.edu/faculty/Pages/item.aspx?topic={query.replace(' ', '-')}",
+        f"https://www.pwc.com/gx/en/issues/{query.replace(' ', '-')}-future-outlook.html",
+        f"https://www2.deloitte.com/global/en/pages/strategy-operations/articles/{query.replace(' ', '-')}-report.html",
+        f"https://www.imf.org/en/Publications/search?when=After&series=Research&title={query.replace(' ', '+')}",
     ]
-    ref_md = "\n".join(f"- [{r}]({r})" for r in refs)
+
+def build_locked_prompt(topic: str):
+    refs_md = "\n".join([f"- [{r}]({r})" for r in get_references(topic)])
     return f"""
-Analyze **{topic}** strategically.
+    Analyze topic **{topic}** (2025 Edition) using Flashmind Strategic 360.
 
-1. Identify root causes (sum = 100%)
-2. Recommend actionable steps
-3. Provide a summary
+    1. Identify Root Causes (sum = 100%)
+    2. Recommend actionable strategies
 
-{ref_md}
-"""
+    3. Markdown table:
+    | Root Cause | % | Solution |
+    |-------------|---|----------|
+    | Cause 1 | 25 | Solution |
+    | Cause 2 | 35 | Solution |
+    | Cause 3 | 40 | Solution |
+
+    {refs_md}
+    """
 
 def flashmind_engine(prompt, key):
     if not key:
-        return {"Analysis": "⚠ Engine key missing"}
+        return {"Analysis 1": "❌ Engine key missing", "Analysis 2": "⚠ None", "Summary": "⚠ None"}
+
     headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
-    try:
-        res = requests.post(
-            "https://api.groq.com/openai/v1/chat/completions",
-            headers=headers,
-            json={"model": "llama-3.1-8b-instant", "messages": [{"role": "user", "content": prompt}]},
-            timeout=60,
-        )
-        return {"Analysis": res.json()["choices"][0]["message"]["content"].strip()}
-    except Exception as e:
-        return {"Analysis": f"⚠ Engine unavailable: {e}"}
+
+    def call(model):
+        try:
+            res = requests.post(
+                "https://api.groq.com/openai/v1/chat/completions",
+                headers=headers,
+                json={"model": model, "messages": [{"role": "user", "content": prompt}]},
+                timeout=60,
+            )
+            return res.json()["choices"][0]["message"]["content"].strip()
+        except Exception:
+            return "⚠ Engine unavailable."
+
+    return {
+        "Analysis 1": call("groq/compound-mini"),
+        "Analysis 2": call("llama-3.1-8b-instant"),
+        "Summary": call("groq/compound"),
+    }
 
 # ------------------------
 # 🖥️ Streamlit UI
@@ -311,3 +333,4 @@ if st.button("🚀 Run Flashmind Analysis"):
         st.rerun()
     else:
         st.success("✅ Admin bypass active — analysis completed without lock.")
+
