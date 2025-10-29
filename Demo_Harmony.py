@@ -282,7 +282,7 @@ with st.sidebar.expander("🔐 Admin Access", expanded=True):
 # ------------------------
 if not admin_bypass and "admin_bypass" not in st.session_state:
     if is_user_locked(user_id, socket_id, lock_data):
-        st.error("🚫 You’ve already used Flashmind in the last few days. Would like to assist you more, kindly contact our team through our website "contact us"." Thank you once again chosing us, have a great day! )
+        st.error("🚫 You’ve already used Flashmind in the last few days. Would like to assist you more, kindly contact our team through our website "contact us" Thank you once again chosing us, have a great day!")
         st.stop()
 
 # ------------------------
@@ -350,6 +350,7 @@ if st.button("🚀 Run Flashmind Analysis"):
         st.rerun()
     else:
         st.success("✅ Admin bypass active — analysis completed without lock.")
+
 
 
 
