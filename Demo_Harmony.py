@@ -164,7 +164,7 @@ def get_references(query):
 def build_locked_prompt(topic: str):
     refs_md = "\n".join([f"- [{r}]({r})" for r in get_references(topic)])
     return f"""
-    Analyze topic **{topic}** (2025 Edition) using Flashmind Strategic 360.
+    Analyze topic **{topic}** (2025 Edition) using Flashmind Intel-Strategic.
 
     1. Identify Root Causes (sum = 100%)
     2. Recommend actionable strategies
@@ -220,7 +220,7 @@ def flashmind_engine(prompt, key):
 # ------------------------
 st.set_page_config(page_title="⚡ Flashmind Analyzer", page_icon="⚡")
 st.title("⚡ Flashmind Analyzer")
-st.caption("One use per user (30-day lock) | © 2025 Flashmind Systems")
+st.caption("One use per user, it's just a preview of our analytics (Would like to assist you more, kindly contact through our harmony website with detailed version of demo or to purchase) | © 2025 Flashmind Systems")
 
 ip = get_user_ip()
 user_id = mask_ip(ip)
@@ -350,3 +350,4 @@ if st.button("🚀 Run Flashmind Analysis"):
         st.rerun()
     else:
         st.success("✅ Admin bypass active — analysis completed without lock.")
+
