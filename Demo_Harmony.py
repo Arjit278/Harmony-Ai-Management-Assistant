@@ -81,21 +81,44 @@ def normalize_timestamp(ts_input):
 # Gist read/write (store user_id, socket_id, timestamp)
 # ------------------------
 def save_lock_data(data):
-    """Save structure safely to gist."""
+    """
+    Force-overwrite the lock.json file on the Gist.
+    Includes validation and success/failure indication in Streamlit.
+    """
     clean = {
         uid: {
             "user_id": v.get("user_id", uid),
             "socket_id": v.get("socket_id", ""),
-            "timestamp": v.get("timestamp"),
+            "timestamp": v.get("timestamp", datetime.utcnow().isoformat()),
         }
         for uid, v in data.items()
     }
-    headers = {"Authorization": f"token {LOCK_API_KEY}", "Accept": "application/vnd.github+json"}
-    payload = {"files": {"lock.json": {"content": json.dumps(clean, indent=4)}}}
+
+    headers = {
+        "Authorization": f"token {LOCK_API_KEY}",
+        "Accept": "application/vnd.github+json",
+    }
+
+    payload = {
+        "files": {
+            "lock.json": {
+                "content": json.dumps(clean, indent=4, ensure_ascii=False)
+            }
+        }
+    }
+
     try:
-        res = requests.patch(LOCK_FILE_URL, headers=headers, json=payload, timeout=10)
-        return res.status_code == 200
-    except Exception:
+        # Force overwrite (PATCH is allowed, but we’ll confirm success)
+        res = requests.patch(LOCK_FILE_URL, headers=headers, json=payload, timeout=15)
+        if res.status_code == 200:
+            st.toast("✅ Lock data updated successfully.", icon="🔓")
+            return True
+        else:
+            st.error(f"❌ Failed to update lock data: {res.status_code}")
+            st.code(res.text)
+            return False
+    except Exception as e:
+        st.error(f"⚠ Error saving lock data: {e}")
         return False
 
 def load_lock_data():
@@ -397,5 +420,6 @@ if st.button("🚀 Run Flashmind Analysis"):
             st.rerun()
         else:
             st.success("✅ Analysis complete (admin override — not locked).")
+
 
 
