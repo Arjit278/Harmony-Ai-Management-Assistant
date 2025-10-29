@@ -179,6 +179,18 @@ def build_locked_prompt(topic: str):
     {refs_md}
     """
 
+# ✅ FIXED: Added build_prompt wrapper
+def build_prompt(topic: str):
+    base = build_locked_prompt(topic)
+    return base + """
+    Provide a **detailed strategic report** including:
+    - Analysis from economic, policy, and technological perspectives
+    - 2025 global and Indian context where relevant
+    - Actionable short-term (0–6 months) and long-term (1–3 years) recommendations
+    - Use Markdown formatting with bullet points and subheadings
+    - Conclude with top 3 key insights for decision-makers
+    """
+
 def flashmind_engine(prompt, key):
     if not key:
         return {"Analysis 1": "❌ Engine key missing", "Analysis 2": "⚠ None", "Summary": "⚠ None"}
@@ -319,18 +331,22 @@ if st.button("🚀 Run Flashmind Analysis"):
         st.stop()
 
     st.info("☕ Processing via Flashmind Engine...")
-    prompt = build_prompt(topic)
+    prompt = build_prompt(topic)  # ✅ fixed reference
     result = flashmind_engine(prompt, ENGINE_KEY)
 
-    st.subheader("🧠 Flashmind Analysis")
-    st.write(result["Analysis"])
+    st.subheader("🧠 Flashmind Strategic Analysis")
+    st.markdown("### 🔹 Analysis 1")
+    st.write(result.get("Analysis 1", "⚠ No response."))
+    st.markdown("### 🔹 Analysis 2")
+    st.write(result.get("Analysis 2", "⚠ No response."))
+    st.markdown("### 🧭 Summary & Recommendations")
+    st.write(result.get("Summary", "⚠ No summary available."))
 
-    # Only register lock if NOT admin
+    # Register lock for non-admin
     if not admin_bypass and "admin_bypass" not in st.session_state:
         lock_data = load_lock_data()
         register_user_lock(user_id, socket_id, lock_data)
-        st.success("✅ Analysis complete. Demo locked for 30 days.")
+        st.success("✅ Analysis complete. Locked for 30 days.")
         st.rerun()
     else:
         st.success("✅ Admin bypass active — analysis completed without lock.")
-
