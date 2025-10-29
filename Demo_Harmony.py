@@ -220,7 +220,7 @@ def flashmind_engine(prompt, key):
 # ------------------------
 st.set_page_config(page_title="⚡ Flashmind Analyzer", page_icon="⚡")
 st.title("⚡ Flashmind Analyzer")
-st.caption("One use per user, it's just a preview of our analytics (Would like to assist you more, kindly contact through our harmony website with detailed version of demo or to purchase) | © 2025 Flashmind Systems")
+st.caption("One use per user, it's just a preview of our analytics (Would like to assist you more, kindly contact harmony team with our website or call on shared numbers with detailed version of demo or to purchase) Thank you once again chosing us, have a great day! | © 2025 Flashmind Systems")
 
 ip = get_user_ip()
 user_id = mask_ip(ip)
@@ -350,5 +350,6 @@ if st.button("🚀 Run Flashmind Analysis"):
         st.rerun()
     else:
         st.success("✅ Admin bypass active — analysis completed without lock.")
+
 
 
