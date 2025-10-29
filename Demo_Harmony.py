@@ -1,4 +1,4 @@
-# === ⚡ Flashmind Analyzer (Stable Lock + Admin + Force Unlock Edition) ===
+# === ⚡ Flashmind Analyzer (Stable Lock + Admin Bypass Edition) ===
 # Author: Arjit | Flashmind Systems © 2025
 
 import streamlit as st
@@ -65,15 +65,10 @@ def save_lock_data(data: dict):
     headers = {"Authorization": f"token {LOCK_API_KEY}", "Accept": "application/vnd.github+json"}
     try:
         res = requests.patch(LOCK_FILE_URL, headers=headers, json=payload, timeout=10)
-        if res.status_code == 200:
-            return True
-        else:
-            st.error(f"❌ GitHub update failed ({res.status_code}): {res.text}")
-            return False
+        return res.status_code == 200
     except Exception as e:
         st.error(f"⚠ Error writing to lock.json: {e}")
         return False
-
 
 def load_lock_data():
     try:
@@ -99,7 +94,6 @@ def load_lock_data():
         fixed[uid] = {"user_id": uid, "socket_id": sid, "timestamp": ts}
     return fixed
 
-
 def deduplicate_locks(data):
     seen_uid, seen_sid, clean = set(), set(), {}
     for uid, entry in data.items():
@@ -114,7 +108,6 @@ def deduplicate_locks(data):
         save_lock_data(clean)
     return clean
 
-
 def is_user_locked(user_id, socket_id, data):
     for entry in data.values():
         ts = parse_timestamp(entry.get("timestamp"))
@@ -125,7 +118,6 @@ def is_user_locked(user_id, socket_id, data):
                 return True
     return False
 
-
 def register_user_lock(user_id, socket_id, data):
     data[user_id] = {
         "user_id": user_id,
@@ -133,7 +125,6 @@ def register_user_lock(user_id, socket_id, data):
         "timestamp": datetime.utcnow().isoformat(),
     }
     save_lock_data(data)
-
 
 def unlock_user(target, data):
     found = False
@@ -149,10 +140,8 @@ def unlock_user(target, data):
         save_lock_data(data)
     return found
 
-
 def force_unlock_current(user_id, socket_id):
-    """Clear only local session locks without touching GitHub."""
-    for key in ["socket_id", "_is_locked"]:
+    for key in ["socket_id", "_is_locked", "admin_bypass"]:
         if key in st.session_state:
             del st.session_state[key]
     st.success(f"✅ Force unlocked this session ({user_id} / {socket_id}). Please rerun.")
@@ -209,6 +198,7 @@ lock_data = deduplicate_locks(load_lock_data())
 # ------------------------
 # 🔐 Admin Panel
 # ------------------------
+admin_bypass = False
 with st.sidebar.expander("🔐 Admin Access", expanded=True):
     if not ADMIN_PASSWORD:
         st.warning("Admin password missing in secrets.")
@@ -216,6 +206,10 @@ with st.sidebar.expander("🔐 Admin Access", expanded=True):
         pwd = st.text_input("Enter Admin Password", type="password")
         if pwd == ADMIN_PASSWORD:
             st.success("✅ Admin Access Granted")
+            st.info("🛡️ Admin bypass enabled — no lock restrictions will apply for this session.")
+            admin_bypass = True
+            st.session_state["admin_bypass"] = True
+
             lock_data = deduplicate_locks(load_lock_data())
 
             if not lock_data:
@@ -246,16 +240,16 @@ with st.sidebar.expander("🔐 Admin Access", expanded=True):
             with col3:
                 if st.button("🚪 Force Unlock (Current User)"):
                     force_unlock_current(user_id, socket_id)
-
         elif pwd:
             st.error("❌ Incorrect password.")
 
 # ------------------------
 # 🧱 Lock Check
 # ------------------------
-if is_user_locked(user_id, socket_id, lock_data):
-    st.error("🚫 You’ve already used Flashmind in the last 30 days. Please contact admin.")
-    st.stop()
+if not admin_bypass and "admin_bypass" not in st.session_state:
+    if is_user_locked(user_id, socket_id, lock_data):
+        st.error("🚫 You’ve already used Flashmind in the last 30 days. Please contact admin.")
+        st.stop()
 
 # ------------------------
 # Access Form
@@ -268,7 +262,7 @@ if not st.checkbox("✅ I have filled and submitted the access form"):
     st.stop()
 
 # ------------------------
-# Topic Input (Prominent)
+# Topic Input
 # ------------------------
 st.markdown("""
 <style>
@@ -309,8 +303,11 @@ if st.button("🚀 Run Flashmind Analysis"):
     st.subheader("🧠 Flashmind Analysis")
     st.write(result["Analysis"])
 
-    # Register lock
-    lock_data = load_lock_data()
-    register_user_lock(user_id, socket_id, lock_data)
-    st.success("✅ Analysis complete. Demo locked for 30 days.")
-    st.rerun()
+    # Only register lock if NOT admin
+    if not admin_bypass and "admin_bypass" not in st.session_state:
+        lock_data = load_lock_data()
+        register_user_lock(user_id, socket_id, lock_data)
+        st.success("✅ Analysis complete. Demo locked for 30 days.")
+        st.rerun()
+    else:
+        st.success("✅ Admin bypass active — analysis completed without lock.")
