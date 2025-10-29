@@ -334,12 +334,45 @@ if not st.checkbox("✅ I have filled and submitted the access form"):
     st.stop()
 
 # ------------------------
-# Analysis Runner
+# Analysis Runner (patched with admin override)
 # ------------------------
-topic = st.text_input("📘 Enter Analysis Topic")
+# --- Prominent Topic Input ---
+st.markdown(
+    """
+    <style>
+    .topic-label {
+        font-size: 1.7em;
+        font-weight: 800;
+        color: #0055ff;
+        text-align: center;
+        margin-top: 25px;
+        margin-bottom: 15px;
+        text-shadow: 0 0 6px rgba(0, 85, 255, 0.2);
+    }
+    .stTextInput > div > div > input {
+        font-size: 1.15em !important;
+        padding: 0.7em 1em !important;
+        border-radius: 10px !important;
+        border: 2px solid #0055ff !important;
+        box-shadow: 0 0 10px rgba(0, 85, 255, 0.25) !important;
+    }
+    </style>
+    <div class="topic-label">📘 Enter Analysis Topic</div>
+    """,
+    unsafe_allow_html=True
+)
+
+topic = st.text_input("", placeholder="Type your analysis topic here...")
+
+
+# check if admin override active in this session
+if "admin_override" not in st.session_state:
+    st.session_state["admin_override"] = False
+
 if st.button("🚀 Run Flashmind Analysis"):
-    lock_data = deduplicate_locks(load_lock_data())
-    if is_user_locked(user_id, socket_id, lock_data):
+    # reload and check lock unless admin override is active
+    lock_data = load_lock_data()
+    if not st.session_state["admin_override"] and is_user_locked(user_id, socket_id, lock_data):
         st.error("🚫 You’re locked for 30 days. Please contact admin.")
         st.stop()
 
@@ -357,6 +390,12 @@ if st.button("🚀 Run Flashmind Analysis"):
         st.subheader("🧾 Final Strategic Summary")
         st.write(result["Summary"])
 
-        register_user_lock(user_id, socket_id, lock_data)
-        st.success("✅ Analysis complete. Demo locked for 30 days.")
-        st.rerun()
+        # only lock if not overridden by admin
+        if not st.session_state["admin_override"]:
+            register_user_lock(user_id, socket_id, lock_data)
+            st.success("✅ Analysis complete. Demo locked for 30 days.")
+            st.rerun()
+        else:
+            st.success("✅ Analysis complete (admin override — not locked).")
+
+
