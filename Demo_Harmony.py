@@ -1,6 +1,9 @@
-# === ⚡ Flashmind Analyzer (Merged: Persistent System ID + OpenRouter + Admin + Gist Lock) ===
+# === ⚡ Flashmind Analyzer (Final: Persistent System ID + OpenRouter + Admin + Gist Lock) ===
 # Author: Arjit | Flashmind Systems © 2025
-# Notes: Uses OpenRouter (via openai SDK) as engine. Paste OPENROUTER_KEY in Streamlit secrets.
+# Notes:
+# - Uses OpenRouter (via openai SDK) as engine. Put OPENROUTER_KEY and LOCK_API_KEY in Streamlit secrets.
+# - Persistent browser system_id stored in localStorage (Option D).
+# - Clear All Locks will clear gist and reset local session so app becomes usable immediately.
 
 import streamlit as st
 import requests, json, hashlib, base64, uuid
@@ -11,9 +14,9 @@ from typing import Dict, Any
 # ------------------------
 # 🔐 Configuration
 # ------------------------
-ENGINE_KEY = st.secrets.get("FLASHMIND_KEY")           # kept for compatibility
-OPENROUTER_KEY = st.secrets.get("OPENROUTER_KEY")     # primary engine key
-LOCK_API_KEY = st.secrets.get("LOCK_API_KEY")         # token with gist permissions
+ENGINE_KEY = st.secrets.get("FLASHMIND_KEY")           # kept for compatibility (fallback)
+OPENROUTER_KEY = st.secrets.get("OPENROUTER_KEY")     # primary engine key (OpenRouter)
+LOCK_API_KEY = st.secrets.get("LOCK_API_KEY")         # token with gist permissions (must be able to patch gist)
 LOCK_FILE_URL = "https://api.github.com/gists/7cd8a2b265c34b1592e88d1d5b863a8a"
 LOCK_DURATION_DAYS = 30
 
@@ -32,23 +35,19 @@ ADMIN_PASSWORD = _ADMIN_PLAIN
 def get_system_id():
     """
     Retrieves a persistent system ID stored in browser localStorage.
-    Uses a Streamlit-JS bridge to attempt to fetch the value.
-    If JS callback doesn't happen immediately, uses a stable Python fallback
-    stored in session_state so the app keeps working.
+    Uses a Streamlit-JS bridge to fetch or create it. If query param exists,
+    it will be picked up and stored in session_state.
     """
     if "system_id" in st.session_state and st.session_state["system_id"]:
         return st.session_state["system_id"]
 
-    # JS snippet: ensure a 'flashmind_system_id' exists in localStorage,
-    # then set window.location.search to include it (triggers a reload with param).
-    # Note: this will reload once in the browser when first-run per client.
     js = """
     <script>
     (function(){
       try {
         let sid = localStorage.getItem("flashmind_system_id");
         if (!sid) {
-          sid = self.crypto && self.crypto.randomUUID ? self.crypto.randomUUID() : 'sid-' + Math.floor(Math.random()*1e16).toString(36);
+          sid = (self.crypto && self.crypto.randomUUID) ? self.crypto.randomUUID() : 'sid-' + Math.floor(Math.random()*1e16).toString(36);
           localStorage.setItem("flashmind_system_id", sid);
         }
         const params = new URLSearchParams(window.location.search);
@@ -58,14 +57,14 @@ def get_system_id():
           window.location.replace(newUrl);
         }
       } catch(e){
-        // silent
+        // silent fallback
       }
     })();
     </script>
     """
     st.components.v1.html(js, height=0)
 
-    # If the JS returns via query param, pick it up:
+    # If JS put the id in query params, capture it
     try:
         params = st.experimental_get_query_params()
         sid = params.get("flashmind_system_id", [None])[0]
@@ -75,7 +74,7 @@ def get_system_id():
     except Exception:
         pass
 
-    # Fallback: generate a stable session-level id (non-persistent across browsers)
+    # Fallback: stable session-only id
     sid = hashlib.sha256(str(uuid.uuid4()).encode()).hexdigest()[:12]
     st.session_state["system_id"] = sid
     return sid
@@ -88,7 +87,7 @@ def parse_timestamp(ts_str):
         return None
     try:
         dt = datetime.fromisoformat(ts_str)
-        return dt if not dt.tzinfo else dt.astimezone(timezone.utc).replace(tzinfo=None)
+        return dt if dt.tzinfo is None else dt.astimezone(timezone.utc).replace(tzinfo=None)
     except Exception:
         return None
 
@@ -121,7 +120,7 @@ def save_lock_data(data: Dict[str, Any]):
     payload = {"files": {"lock.json": {"content": json.dumps(data, indent=4)}}}
     headers = {"Authorization": f"token {LOCK_API_KEY}", "Accept": "application/vnd.github+json"}
     try:
-        res = requests.patch(LOCK_FILE_URL, headers=headers, json=payload, timeout=10)
+        res = requests.patch(LOCK_FILE_URL, headers=headers, json=payload, timeout=15)
         return res.status_code == 200
     except Exception as e:
         st.error(f"⚠ Error writing lock.json: {e}")
@@ -131,13 +130,12 @@ def load_lock_data():
     """Load lock.json and return a dict keyed by system_id."""
     try:
         headers = {"Authorization": f"token {LOCK_API_KEY}"} if LOCK_API_KEY else {}
-        res = requests.get(LOCK_FILE_URL, headers=headers, timeout=10)
+        res = requests.get(LOCK_FILE_URL, headers=headers, timeout=15)
         content = res.json().get("files", {}).get("lock.json", {}).get("content", "{}")
         raw = json.loads(content)
         if isinstance(raw, dict):
             clean = {}
             for k, v in raw.items():
-                # Accept both legacy and new formats; normalize
                 if isinstance(v, dict) and v.get("system_id"):
                     sid = v["system_id"]
                     clean[sid] = {"system_id": sid, "timestamp": normalize_timestamp(v.get("timestamp")), **{kk: vv for kk, vv in v.items() if kk not in ("system_id","timestamp")}}
@@ -199,7 +197,7 @@ def unlock(system_id, data: Dict[str, Any]):
 
 # Force-clear session for current browser (no gist changes)
 def force_unlock_current_session():
-    for key in ["system_id", "_is_locked", "admin_bypass", "force_refresh"]:
+    for key in ["system_id", "_is_locked", "admin_bypass", "force_refresh", "flashmind_used", "used_once", "lock_status"]:
         if key in st.session_state:
             del st.session_state[key]
     st.success("✅ Session reset locally. Rerun the app now.")
@@ -208,7 +206,7 @@ def force_unlock_current_session():
 # ------------------------
 # ⚡ Flashmind Engine (OpenRouter via openai SDK)
 # ------------------------
-# Model fallback order as requested:
+# Final model fallback order (locked as requested)
 ANALYSIS_FALLBACK_MODELS = [
     "openai/gpt-oss-20b:free",
     "deepseek/deepseek-r1-distill-llama-70b:free",
@@ -216,7 +214,6 @@ ANALYSIS_FALLBACK_MODELS = [
     "nvidia/nemotron-nano-12b-v2-vl:free",
     "nvidia/nemotron-nano-9b-v2:free",
     "x-ai/grok-4.1-fast:free",
-  
 ]
 
 # Try to import openai SDK
@@ -234,6 +231,7 @@ def call_openrouter_model(prompt: str, model: str, api_key: str, max_tokens: int
     try:
         openai.api_key = api_key
         openai.api_base = "https://openrouter.ai/api/v1"
+        # use ChatCompletion.create (openai==0.28.0 compatible)
         res = openai.ChatCompletion.create(
             model=model,
             messages=[{"role":"system","content":"You are a structured business & strategic analysis assistant."},
@@ -241,7 +239,12 @@ def call_openrouter_model(prompt: str, model: str, api_key: str, max_tokens: int
             max_tokens=max_tokens,
             temperature=temperature,
         )
-        return res["choices"][0]["message"]["content"].strip()
+        # guard for different response shapes
+        choices = res.get("choices") or []
+        if choices and isinstance(choices, list):
+            msg = choices[0].get("message", {}).get("content") if isinstance(choices[0].get("message"), dict) else choices[0].get("text")
+            return (msg or "").strip()
+        return "[❌ Model returned unexpected response format]"
     except Exception as e:
         return f"[❌ Model call failed: {str(e)}]"
 
@@ -249,6 +252,7 @@ def call_openrouter_with_fallback(prompt: str, api_key: str):
     for m in ANALYSIS_FALLBACK_MODELS:
         out = call_openrouter_model(prompt, m, api_key)
         if isinstance(out, str) and out.startswith("[❌"):
+            # try next
             continue
         return out
     return "[❌ All analysis models failed]"
@@ -360,6 +364,10 @@ with st.sidebar.expander("🔐 Admin Access", expanded=True):
                         # also clear any local session for target if matches current
                         if target.strip() == system_id and "system_id" in st.session_state:
                             del st.session_state["system_id"]
+                            # also remove other lock flags to avoid ghost-locks
+                            for k in ["_is_locked","flashmind_used","used_once","lock_status","force_refresh"]:
+                                if k in st.session_state:
+                                    del st.session_state[k]
                         st.rerun()
                     else:
                         st.warning("No match found.")
@@ -367,10 +375,15 @@ with st.sidebar.expander("🔐 Admin Access", expanded=True):
                 if st.button("🧹 Clear All Locks"):
                     # clear gist file and reset current browser session state so app picks up new empty state
                     save_lock_data({})
-                    for k in ["system_id", "_is_locked", "admin_bypass", "force_refresh"]:
+                    keys_to_clear = [
+                        "system_id", "_is_locked", "admin_bypass", "force_refresh",
+                        "flashmind_used", "used_once", "lock_status"
+                    ]
+                    for k in keys_to_clear:
                         if k in st.session_state:
                             del st.session_state[k]
                     st.success("✅ All locks cleared and session reset.")
+                    # rerun so the app reloads and reads empty gist
                     st.rerun()
         elif pwd:
             st.error("❌ Incorrect password.")
@@ -379,9 +392,17 @@ with st.sidebar.expander("🔐 Admin Access", expanded=True):
 # 🧱 Lock Check (system-id)
 # ------------------------
 if not st.session_state.get("admin_bypass", False):
+    # reload latest gist before checking to avoid stale cache
+    lock_data = load_lock_data()
+    lock_data = dedupe_and_persist(lock_data)
     if is_locked(system_id, lock_data):
         st.error("🚫 You have already used Flashmind in the last few days. Would like to assist you more, kindly contact our team through our website contact us. Thank you once again for choosing us, have a great day!")
         st.stop()
+    else:
+        # remove stale session flags if any
+        for k in ["_is_locked","flashmind_used","used_once","lock_status"]:
+            if k in st.session_state:
+                del st.session_state[k]
 
 # ------------------------
 # Access Form
