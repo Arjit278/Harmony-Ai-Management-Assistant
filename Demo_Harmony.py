@@ -421,7 +421,7 @@ with st.sidebar.expander("🔐 Admin Access", expanded=True):
                                 if k in st.session_state:
                                     del st.session_state[k]
                         # reload fresh
-                        st.experimental_rerun()
+                        st.rerun()
                     else:
                         st.warning("No match found.")
             with col2:
