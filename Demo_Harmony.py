@@ -525,7 +525,7 @@ if st.button("🚀 Run Flashmind Analysis"):
         register_lock(system_id, lock_data, meta=meta)
         st.success("✅ Analysis complete. Locked for 30 days.")
         time.sleep(1)
-        st.experimental_rerun()
+        st.rerun()
     else:
         st.success("✅ Admin bypass active — analysis completed without lock.")
 
