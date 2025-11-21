@@ -1,9 +1,9 @@
-# === ⚡ Flashmind Analyzer (Final: Persistent System ID + OpenRouter + Admin + Gist Lock) ===
+# === ⚡ Flashmind Analyzer (Final: Persistent Device Fingerprint ID + OpenRouter + Admin + Gist Lock) ===
 # Author: Arjit | Flashmind Systems © 2025
 # Notes:
-# - Uses OpenRouter (via openai SDK) as engine. Put OPENROUTER_KEY and LOCK_API_KEY in Streamlit secrets.
-# - Persistent browser system_id stored in localStorage (Option D).
-# - Clear All Locks will clear gist and reset local session so app becomes usable immediately.
+# - Uses OpenRouter endpoint via requests. Put OPENROUTER_KEY and LOCK_API_KEY in Streamlit secrets.
+# - Device fingerprint ID = 'dfp_<sha256hash>' (stable per device/browser combo).
+# - Clear All Locks clears gist and resets local session state so app becomes usable immediately.
 
 import streamlit as st
 import requests, json, hashlib, base64, uuid
@@ -30,53 +30,78 @@ if not _ADMIN_PLAIN and st.secrets.get("ADMIN_PASSWORD_BASE64"):
 ADMIN_PASSWORD = _ADMIN_PLAIN
 
 # ------------------------
-# 🧩 Browser-persistent system ID (Option D)
+# 🧩 Device-fingerprint System ID (Option A)
 # ------------------------
-def get_system_id():
+def get_device_fingerprint():
     """
-    Retrieves a persistent system ID stored in browser localStorage.
-    Uses a Streamlit-JS bridge to fetch or create it. If query param exists,
-    it will be picked up and stored in session_state.
+    Generate or retrieve a device fingerprint ID (dfp_<hash>) using a browser JS snippet
+    that collects navigator.userAgent, screen size, language, and timezone offset.
+    The JS writes the fingerprint as a query param 'flashmind_fp' and the Python side
+    reads it via st.experimental_get_query_params(). This avoids localStorage reliability issues.
     """
-    if "system_id" in st.session_state and st.session_state["system_id"]:
-        return st.session_state["system_id"]
+    if "device_fingerprint" in st.session_state and st.session_state["device_fingerprint"]:
+        return st.session_state["device_fingerprint"]
 
+    # JS builds a raw identifier string and sets it in the URL query param once.
     js = """
     <script>
     (function(){
       try {
-        let sid = localStorage.getItem("flashmind_system_id");
-        if (!sid) {
-          sid = (self.crypto && self.crypto.randomUUID) ? self.crypto.randomUUID() : 'sid-' + Math.floor(Math.random()*1e16).toString(36);
-          localStorage.setItem("flashmind_system_id", sid);
+        const ua = navigator.userAgent || "";
+        const lang = navigator.language || "";
+        const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || (new Date().getTimezoneOffset()).toString();
+        const sw = (screen && screen.width) ? screen.width : 0;
+        const sh = (screen && screen.height) ? screen.height : 0;
+        const raw = ua + "||" + lang + "||" + tz + "||" + sw + "x" + sh;
+        // compute a simple SHA-256 using SubtleCrypto
+        async function sha256str(str){
+          const enc = new TextEncoder();
+          const data = enc.encode(str);
+          const hash = await crypto.subtle.digest('SHA-256', data);
+          const hex = Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2,'0')).join('');
+          return hex;
         }
-        const params = new URLSearchParams(window.location.search);
-        if (params.get("flashmind_system_id") !== sid) {
-          params.set("flashmind_system_id", sid);
-          const newUrl = window.location.origin + window.location.pathname + '?' + params.toString();
-          window.location.replace(newUrl);
-        }
+        sha256str(raw).then(h => {
+          const fp = 'dfp_' + h.slice(0,16);
+          const params = new URLSearchParams(window.location.search);
+          if (params.get('flashmind_fp') !== fp) {
+            params.set('flashmind_fp', fp);
+            const newUrl = window.location.origin + window.location.pathname + '?' + params.toString();
+            // Replace location (redirect) to inject param — will reload once with the param
+            window.location.replace(newUrl);
+          }
+        }).catch(e => {
+          // fallback: set a random prefixed id
+          const fp = 'dfp_' + (Math.random().toString(36).substring(2, 18));
+          const params = new URLSearchParams(window.location.search);
+          if (params.get('flashmind_fp') !== fp) {
+            params.set('flashmind_fp', fp);
+            const newUrl = window.location.origin + window.location.pathname + '?' + params.toString();
+            window.location.replace(newUrl);
+          }
+        });
       } catch(e){
-        // silent fallback
+        // silent
       }
     })();
     </script>
     """
+    # inject the JS; the page will reload once with ?flashmind_fp=<id>
     st.components.v1.html(js, height=0)
 
-    # If JS put the id in query params, capture it
+    # capture the value (if present)
     try:
         params = st.experimental_get_query_params()
-        sid = params.get("flashmind_system_id", [None])[0]
-        if sid:
-            st.session_state["system_id"] = sid
-            return sid
+        fp = params.get("flashmind_fp", [None])[0]
+        if fp:
+            st.session_state["device_fingerprint"] = fp
+            return fp
     except Exception:
         pass
 
-    # Fallback: stable session-only id
-    sid = hashlib.sha256(str(uuid.uuid4()).encode()).hexdigest()[:12]
-    st.session_state["system_id"] = sid
+    # fallback stable session-only id (rare)
+    sid = "dfp_" + hashlib.sha256(str(uuid.uuid4()).encode()).hexdigest()[:16]
+    st.session_state["device_fingerprint"] = sid
     return sid
 
 # ------------------------
@@ -197,16 +222,16 @@ def unlock(system_id, data: Dict[str, Any]):
 
 # Force-clear session for current browser (no gist changes)
 def force_unlock_current_session():
-    for key in ["system_id", "_is_locked", "admin_bypass", "force_refresh", "flashmind_used", "used_once", "lock_status"]:
+    for key in ["device_fingerprint", "_is_locked", "admin_bypass", "force_refresh", "flashmind_used", "used_once", "lock_status"]:
         if key in st.session_state:
             del st.session_state[key]
     st.success("✅ Session reset locally. Rerun the app now.")
     st.rerun()
 
 # ------------------------
-# ⚡ Flashmind Engine (OpenRouter via openai SDK)
+# ⚡ Flashmind Engine (OpenRouter via requests)
 # ------------------------
-# Final model fallback order (locked as requested)
+# Final model fallback order (as requested)
 ANALYSIS_FALLBACK_MODELS = [
     "openai/gpt-oss-20b:free",
     "deepseek/deepseek-r1-distill-llama-70b:free",
@@ -216,43 +241,66 @@ ANALYSIS_FALLBACK_MODELS = [
     "x-ai/grok-4.1-fast:free",
 ]
 
-# Try to import openai SDK
-try:
-    import openai
-    HAS_OPENAI_SDK = True
-except Exception:
-    HAS_OPENAI_SDK = False
+OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 
-def call_openrouter_model(prompt: str, model: str, api_key: str, max_tokens: int = 1200, temperature: float = 0.2):
+def call_openrouter_model_requests(prompt: str, model: str, api_key: str, stream: bool=False, timeout: int=60):
+    """
+    Call OpenRouter endpoint using requests. Returns text on success or raises/returns error string.
+    Implements a couple of retries for transient errors.
+    """
     if not api_key:
         return "[❌ OpenRouter API key missing]"
-    if not HAS_OPENAI_SDK:
-        return "[❌ openai SDK missing. Install: pip install openai==0.28.0]"
-    try:
-        openai.api_key = api_key
-        openai.api_base = "https://openrouter.ai/api/v1"
-        # use ChatCompletion.create (openai==0.28.0 compatible)
-        res = openai.ChatCompletion.create(
-            model=model,
-            messages=[{"role":"system","content":"You are a structured business & strategic analysis assistant."},
-                      {"role":"user","content": prompt}],
-            max_tokens=max_tokens,
-            temperature=temperature,
-        )
-        # guard for different response shapes
-        choices = res.get("choices") or []
-        if choices and isinstance(choices, list):
-            msg = choices[0].get("message", {}).get("content") if isinstance(choices[0].get("message"), dict) else choices[0].get("text")
-            return (msg or "").strip()
-        return "[❌ Model returned unexpected response format]"
-    except Exception as e:
-        return f"[❌ Model call failed: {str(e)}]"
+    headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+    payload = {
+        "model": model,
+        "messages": [{"role": "system", "content": "You are a structured business & strategic analysis assistant."},
+                     {"role": "user", "content": prompt}],
+        "stream": stream
+    }
+    attempts = 2
+    for attempt in range(attempts):
+        try:
+            r = requests.post(OPENROUTER_URL, headers=headers, json=payload, timeout=timeout)
+            if r.status_code != 200:
+                # try to decode message for debugging
+                try:
+                    txt = r.text or r.content.decode("utf-8", errors="ignore")
+                except Exception:
+                    txt = f"Status {r.status_code}"
+                # transient? wait and retry
+                if attempt < attempts - 1:
+                    time.sleep(2 + attempt * 3)
+                    continue
+                return f"[❌ Model call failed: {r.status_code} - {txt[:400]}]"
+            # parse response
+            try:
+                data = r.json()
+                choices = data.get("choices") or []
+                if choices and isinstance(choices, list):
+                    # OpenRouter returns choices[*].message.content usually
+                    first = choices[0]
+                    if isinstance(first.get("message"), dict):
+                        return (first["message"].get("content") or "").strip()
+                    # fallback if older shape
+                    return (first.get("text") or "").strip()
+                # fallback: return raw text
+                return r.text.strip()
+            except Exception:
+                return r.text.strip()
+        except Exception as e:
+            if attempt < attempts - 1:
+                time.sleep(2 + attempt * 2)
+                continue
+            return f"[❌ Connection error: {e}]"
 
-def call_openrouter_with_fallback(prompt: str, api_key: str):
-    for m in ANALYSIS_FALLBACK_MODELS:
-        out = call_openrouter_model(prompt, m, api_key)
+def call_openrouter_with_fallback_requests(prompt: str, api_key: str):
+    """
+    Iterate through ANALYSIS_FALLBACK_MODELS in order and return the first successful output (non-error).
+    """
+    for model in ANALYSIS_FALLBACK_MODELS:
+        out = call_openrouter_model_requests(prompt, model, api_key, stream=False, timeout=90)
         if isinstance(out, str) and out.startswith("[❌"):
-            # try next
+            # try next model
             continue
         return out
     return "[❌ All analysis models failed]"
@@ -296,12 +344,14 @@ Provide a detailed 2025 report with:
 """
 
 def flashmind_engine(prompt, api_key):
-    # Uses fallback sequence to produce Analysis 1, Analysis 2, Summary
+    """
+    Use the call_openrouter_with_fallback_requests to produce three outputs.
+    """
     if not api_key:
         return {"Analysis 1": "❌ OpenRouter key missing", "Analysis 2": "⚠ None", "Summary": "⚠ None"}
-    out1 = call_openrouter_with_fallback(prompt, api_key)
-    out2 = call_openrouter_with_fallback(prompt, api_key)
-    out3 = call_openrouter_with_fallback(prompt, api_key)
+    out1 = call_openrouter_with_fallback_requests(prompt, api_key)
+    out2 = call_openrouter_with_fallback_requests(prompt, api_key)
+    out3 = call_openrouter_with_fallback_requests(prompt, api_key)
     return {"Analysis 1": out1, "Analysis 2": out2, "Summary": out3}
 
 # ------------------------
@@ -311,9 +361,12 @@ st.set_page_config(page_title="⚡ Harmony Business Intel Analysis", page_icon="
 st.title("⚡ Harmony BIA - Flashmind Analyzer")
 st.caption("Demo • One use per user • Contact Harmony for full license | © 2025 Harmony-Flashmind Systems")
 
-# get persistent system id and detect mobile for this session
-system_id = get_system_id()
+# Acquire stable device fingerprint ID
+device_fp = get_device_fingerprint()
+# Normalize ID prefix
+system_id = device_fp if device_fp.startswith("dfp_") else f"dfp_{device_fp}"
 is_mobile_session = detect_mobile()
+
 st.write(f"🆔 Persistent System ID: `{system_id}` | 📱 Mobile: `{is_mobile_session}`")
 
 # load & dedupe lock data (gist-backed)
@@ -361,30 +414,30 @@ with st.sidebar.expander("🔐 Admin Access", expanded=True):
                 if st.button("🔓 Unlock System"):
                     if unlock(target.strip(), lock_data):
                         st.success(f"✅ Unlocked `{target}`")
-                        # also clear any local session for target if matches current
-                        if target.strip() == system_id and "system_id" in st.session_state:
-                            del st.session_state["system_id"]
-                            # also remove other lock flags to avoid ghost-locks
+                        # also clear any local session for target if it matches current
+                        if target.strip() == system_id and "device_fingerprint" in st.session_state:
+                            del st.session_state["device_fingerprint"]
                             for k in ["_is_locked","flashmind_used","used_once","lock_status","force_refresh"]:
                                 if k in st.session_state:
                                     del st.session_state[k]
-                        st.rerun()
+                        # reload fresh
+                        st.experimental_rerun()
                     else:
                         st.warning("No match found.")
             with col2:
                 if st.button("🧹 Clear All Locks"):
-                    # clear gist file and reset current browser session state so app picks up new empty state
+                    # clear gist file and reset session keys
                     save_lock_data({})
                     keys_to_clear = [
-                        "system_id", "_is_locked", "admin_bypass", "force_refresh",
+                        "device_fingerprint", "_is_locked", "admin_bypass", "force_refresh",
                         "flashmind_used", "used_once", "lock_status"
                     ]
                     for k in keys_to_clear:
                         if k in st.session_state:
                             del st.session_state[k]
                     st.success("✅ All locks cleared and session reset.")
-                    # rerun so the app reloads and reads empty gist
-                    st.rerun()
+                    # reload so the app re-reads empty gist and new fp param will remain
+                    st.experimental_rerun()
         elif pwd:
             st.error("❌ Incorrect password.")
 
@@ -449,7 +502,7 @@ if st.button("🚀 Run Flashmind Analysis"):
         st.warning("Please enter a topic.")
         st.stop()
 
-    st.info("☕ Processing via Flashmind Engine...")
+    st.info("☕ Processing via OpenRouter fallback engine...")
     prompt = build_prompt(topic)
     key_to_use = OPENROUTER_KEY or ENGINE_KEY
     result = flashmind_engine(prompt, key_to_use)
@@ -472,6 +525,6 @@ if st.button("🚀 Run Flashmind Analysis"):
         register_lock(system_id, lock_data, meta=meta)
         st.success("✅ Analysis complete. Locked for 30 days.")
         time.sleep(1)
-        st.rerun()
+        st.experimental_rerun()
     else:
         st.success("✅ Admin bypass active — analysis completed without lock.")
