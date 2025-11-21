@@ -502,7 +502,7 @@ if st.button("🚀 Run Flashmind Analysis"):
         st.warning("Please enter a topic.")
         st.stop()
 
-    st.info("☕ Processing via OpenRouter fallback engine...")
+    st.info("☕ Processing via Omnicore Optimized engine...")
     prompt = build_prompt(topic)
     key_to_use = OPENROUTER_KEY or ENGINE_KEY
     result = flashmind_engine(prompt, key_to_use)
@@ -528,4 +528,5 @@ if st.button("🚀 Run Flashmind Analysis"):
         st.experimental_rerun()
     else:
         st.success("✅ Admin bypass active — analysis completed without lock.")
+
 
