@@ -305,7 +305,7 @@ def build_prompt(topic: str):
 Provide a detailed 2025 report with:
 - Material, strengths and composition with tech perspectives
 - India + global view
-- Actions (0–6 months) + (1–3 years)
+- Actions (0–6 months) + (1–3 years) with recommended company names and URL's
 - Markdown formatting
 """
 
@@ -508,3 +508,4 @@ if st.button("🚀 Run Flashmind Analysis"):
         st.experimental_rerun()
     else:
         st.success("✅ Admin bypass active — analysis completed without lock.")
+
