@@ -2,8 +2,9 @@
 # Author: Arjit | Flashmind Systems © 2025
 # Notes:
 # - Uses OpenRouter endpoint via requests. Put OPENROUTER_KEY and LOCK_API_KEY in Streamlit secrets.
-# - Device ID = 'bia_<sha256hash>' derived from User-Agent ONLY (stable across reloads).
+# - Device ID = 'bia_<sha256(ua)[:12]>' derived from User-Agent ONLY (stable across reloads where UA is available).
 # - Clear All Locks clears gist and resets local session state so app becomes usable immediately.
+# - Single-copy script (no duplicates).
 
 import streamlit as st
 import requests, json, hashlib, base64, uuid
@@ -30,7 +31,7 @@ if not _ADMIN_PLAIN and st.secrets.get("ADMIN_PASSWORD_BASE64"):
 ADMIN_PASSWORD = _ADMIN_PLAIN
 
 # ------------------------
-# 🧩 Device-ID System: bia_{hash} derived from User-Agent (Option A2 variant)
+# 🧩 Device-ID System: bia_{hash} derived from User-Agent
 # ------------------------
 def get_device_id():
     """
@@ -191,7 +192,7 @@ def force_unlock_current_session():
         if key in st.session_state:
             del st.session_state[key]
     st.success("✅ Session reset locally. Rerun the app now.")
-    st.rerun()
+    st.experimental_rerun()
 
 # ------------------------
 # ⚡ Flashmind Engine (OpenRouter via requests)
@@ -302,7 +303,7 @@ def build_prompt(topic: str):
     base = build_locked_prompt(topic)
     return base + """
 Provide a detailed 2025 report with:
-- Material, strenghs and composition with tech perspectives
+- Material, strengths and composition with tech perspectives
 - India + global view
 - Actions (0–6 months) + (1–3 years)
 - Markdown formatting
@@ -382,11 +383,11 @@ with st.sidebar.expander("🔐 Admin Access", expanded=True):
                         # also clear any local session for target if it matches current
                         if target.strip() == system_id and "device_id" in st.session_state:
                             del st.session_state["device_id"]
-                            for k in ["_is_locked","flashmind_used","used_once","lock_status","force_refresh"]:
+                            for k in ["_is_locked","flashmind_used","used_once","lock_status","force_refresh","admin_bypass"]:
                                 if k in st.session_state:
                                     del st.session_state[k]
                         # reload fresh
-                        st.rerun()
+                        st.experimental_rerun()
                     else:
                         st.warning("No match found.")
             with col2:
@@ -402,7 +403,7 @@ with st.sidebar.expander("🔐 Admin Access", expanded=True):
                             del st.session_state[k]
                     st.success("✅ All locks cleared and session reset.")
                     # reload so the app re-reads empty gist and new id remains
-                    st.rerun()
+                    st.experimental_rerun()
         elif pwd:
             st.error("❌ Incorrect password.")
 
@@ -427,7 +428,10 @@ if not st.session_state.get("admin_bypass", False):
 # ------------------------
 st.markdown("### 📝 Step 1: Complete Access Form")
 form_url = "https://41dt5g.share-na2.hsforms.com/2K9_0lqxDTzeMPY4ZyJkBLQ"
-st.link_button("📝 Open the Access Form", form_url)
+try:
+    st.link_button("📝 Open the Access Form", form_url)
+except Exception:
+    st.markdown(f"[Open the Access Form]({form_url})")
 if not st.checkbox("✅ I have filled and submitted the access form"):
     st.warning("Please confirm after submitting the form.")
     st.stop()
@@ -463,9 +467,20 @@ topic = st.text_input("", placeholder="Type your analysis topic here...")
 # 🚀 Run Analysis
 # ------------------------
 if st.button("🚀 Run Flashmind Analysis"):
+    # immediate session-state lock-check to prevent race conditions
     if not topic.strip():
         st.warning("Please enter a topic.")
         st.stop()
+
+    # Re-check latest gist before starting run to avoid concurrent double-run race
+    if not st.session_state.get("admin_bypass", False):
+        lock_data = load_lock_data()
+        lock_data = dedupe_and_persist(lock_data)
+        if is_locked(system_id, lock_data):
+            st.error("🚫 This device has already used Flashmind in the last few days.")
+            st.stop()
+        # mark local session flag to avoid accidental duplicate clicks
+        st.session_state["_is_locked"] = True
 
     st.info("☕ Processing via Omnicore Optimized engine... let Omnicore systems knock the doors of relevant websites, Take a sip a coffee")
     prompt = build_prompt(topic)
@@ -490,7 +505,6 @@ if st.button("🚀 Run Flashmind Analysis"):
         register_lock(system_id, lock_data, meta=meta)
         st.success("✅ Analysis complete. Locked for 30 days.")
         time.sleep(1)
-        st.rerun()
+        st.experimental_rerun()
     else:
         st.success("✅ Admin bypass active — analysis completed without lock.")
-
