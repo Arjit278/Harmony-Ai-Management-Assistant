@@ -303,9 +303,9 @@ def build_prompt(topic: str):
     base = build_locked_prompt(topic)
     return base + """
 Provide a detailed 2025 report with:
-- Material, strengths and composition with tech perspectives
+- Material, strengths and composition with tech perspectives with company names for recommndations
 - India + global view
-- Actions (0–6 months) + (1–3 years) with recommended company names and URL's
+- Actions (0–6 months) + (1–3 years)
 - Markdown formatting
 """
 
@@ -387,7 +387,7 @@ with st.sidebar.expander("🔐 Admin Access", expanded=True):
                                 if k in st.session_state:
                                     del st.session_state[k]
                         # reload fresh
-                        st.experimental_rerun()
+                        st.rerun()
                     else:
                         st.warning("No match found.")
             with col2:
@@ -403,7 +403,7 @@ with st.sidebar.expander("🔐 Admin Access", expanded=True):
                             del st.session_state[k]
                     st.success("✅ All locks cleared and session reset.")
                     # reload so the app re-reads empty gist and new id remains
-                    st.experimental_rerun()
+                    st.rerun()
         elif pwd:
             st.error("❌ Incorrect password.")
 
@@ -505,7 +505,6 @@ if st.button("🚀 Run Flashmind Analysis"):
         register_lock(system_id, lock_data, meta=meta)
         st.success("✅ Analysis complete. Locked for 30 days.")
         time.sleep(1)
-        st.experimental_rerun()
+        st.rerun()
     else:
         st.success("✅ Admin bypass active — analysis completed without lock.")
-
