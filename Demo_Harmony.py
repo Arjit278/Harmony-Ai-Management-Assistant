@@ -482,7 +482,7 @@ if st.button("🚀 Run Flashmind Analysis"):
         # mark local session flag to avoid accidental duplicate clicks
         st.session_state["_is_locked"] = True
 
-    st.info("☕ Processing via Omnicore Optimized engine... let Omnicore systems knock the doors of relevant websites, Take a sip a coffee")
+    st.info("☕ Processing via Omnicore Optimized engine... let Omnicore systems knock the doors of relevant websites, Take a sip of coffee")
     prompt = build_prompt(topic)
     key_to_use = OPENROUTER_KEY or ENGINE_KEY
     result = flashmind_engine(prompt, key_to_use)
@@ -508,3 +508,4 @@ if st.button("🚀 Run Flashmind Analysis"):
         st.rerun()
     else:
         st.success("✅ Admin bypass active — analysis completed without lock.")
+
