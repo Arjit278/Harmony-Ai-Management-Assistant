@@ -1,8 +1,8 @@
-# === ⚡ Flashmind Analyzer (Final: Persistent Device Fingerprint ID + OpenRouter + Admin + Gist Lock) ===
+# === ⚡ Flashmind Analyzer (Final: Persistent Device ID bia_{hash} + OpenRouter + Admin + Gist Lock) ===
 # Author: Arjit | Flashmind Systems © 2025
 # Notes:
 # - Uses OpenRouter endpoint via requests. Put OPENROUTER_KEY and LOCK_API_KEY in Streamlit secrets.
-# - Device fingerprint ID = 'dfp_<sha256hash>' (stable per device/browser combo).
+# - Device ID = 'bia_<sha256hash>' derived from User-Agent ONLY (stable across reloads).
 # - Clear All Locks clears gist and resets local session state so app becomes usable immediately.
 
 import streamlit as st
@@ -30,79 +30,44 @@ if not _ADMIN_PLAIN and st.secrets.get("ADMIN_PASSWORD_BASE64"):
 ADMIN_PASSWORD = _ADMIN_PLAIN
 
 # ------------------------
-# 🧩 Device-fingerprint System ID (Option A)
+# 🧩 Device-ID System: bia_{hash} derived from User-Agent (Option A2 variant)
 # ------------------------
-def get_device_fingerprint():
+def get_device_id():
     """
-    Generate or retrieve a device fingerprint ID (dfp_<hash>) using a browser JS snippet
-    that collects navigator.userAgent, screen size, language, and timezone offset.
-    The JS writes the fingerprint as a query param 'flashmind_fp' and the Python side
-    reads it via st.experimental_get_query_params(). This avoids localStorage reliability issues.
+    Produce a stable device id in format 'bia_<sha256(ua)[:12]>' derived ONLY from the
+    User-Agent string when available.
+
+    Steps (priority):
+    1. Try environment variables HTTP_USER_AGENT / USER_AGENT (common in many deployments)
+    2. Try Streamlit query param 'ua' if caller supplied it (some proxies add UA to query)
+    3. If none available, fall back to a stable session id (bia_<sha>) based on hashed uuid.
+       (Fallback is only used in rare environments where UA is not exposed to Python.)
     """
-    if "device_fingerprint" in st.session_state and st.session_state["device_fingerprint"]:
-        return st.session_state["device_fingerprint"]
+    if "device_id" in st.session_state and st.session_state["device_id"]:
+        return st.session_state["device_id"]
 
-    # JS builds a raw identifier string and sets it in the URL query param once.
-    js = """
-    <script>
-    (function(){
-      try {
-        const ua = navigator.userAgent || "";
-        const lang = navigator.language || "";
-        const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || (new Date().getTimezoneOffset()).toString();
-        const sw = (screen && screen.width) ? screen.width : 0;
-        const sh = (screen && screen.height) ? screen.height : 0;
-        const raw = ua + "||" + lang + "||" + tz + "||" + sw + "x" + sh;
-        // compute a simple SHA-256 using SubtleCrypto
-        async function sha256str(str){
-          const enc = new TextEncoder();
-          const data = enc.encode(str);
-          const hash = await crypto.subtle.digest('SHA-256', data);
-          const hex = Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2,'0')).join('');
-          return hex;
-        }
-        sha256str(raw).then(h => {
-          const fp = 'dfp_' + h.slice(0,16);
-          const params = new URLSearchParams(window.location.search);
-          if (params.get('flashmind_fp') !== fp) {
-            params.set('flashmind_fp', fp);
-            const newUrl = window.location.origin + window.location.pathname + '?' + params.toString();
-            // Replace location (redirect) to inject param — will reload once with the param
-            window.location.replace(newUrl);
-          }
-        }).catch(e => {
-          // fallback: set a random prefixed id
-          const fp = 'dfp_' + (Math.random().toString(36).substring(2, 18));
-          const params = new URLSearchParams(window.location.search);
-          if (params.get('flashmind_fp') !== fp) {
-            params.set('flashmind_fp', fp);
-            const newUrl = window.location.origin + window.location.pathname + '?' + params.toString();
-            window.location.replace(newUrl);
-          }
-        });
-      } catch(e){
-        // silent
-      }
-    })();
-    </script>
-    """
-    # inject the JS; the page will reload once with ?flashmind_fp=<id>
-    st.components.v1.html(js, height=0)
+    # 1) env-provided UA (works on many servers when forwarded by proxy)
+    ua = os.environ.get("HTTP_USER_AGENT") or os.environ.get("USER_AGENT") or ""
 
-    # capture the value (if present)
-    try:
-        params = st.experimental_get_query_params()
-        fp = params.get("flashmind_fp", [None])[0]
-        if fp:
-            st.session_state["device_fingerprint"] = fp
-            return fp
-    except Exception:
-        pass
+    # 2) query param fallback (if you have a proxy / client that sets ?ua=...)
+    if not ua:
+        try:
+            params = st.experimental_get_query_params()
+            ua = params.get("ua", [""])[0] or ""
+        except Exception:
+            ua = ""
 
-    # fallback stable session-only id (rare)
-    sid = "dfp_" + hashlib.sha256(str(uuid.uuid4()).encode()).hexdigest()[:16]
-    st.session_state["device_fingerprint"] = sid
-    return sid
+    # Normalize and build id from UA if present
+    if ua:
+        h = hashlib.sha256(ua.encode("utf-8")).hexdigest()[:12]
+        did = f"bia_{h}"
+        st.session_state["device_id"] = did
+        return did
+
+    # 3) fallback stable session-only id (rare)
+    fallback = "bia_" + hashlib.sha256(str(uuid.uuid4()).encode()).hexdigest()[:12]
+    st.session_state["device_id"] = fallback
+    return fallback
 
 # ------------------------
 # Utility functions
@@ -222,7 +187,7 @@ def unlock(system_id, data: Dict[str, Any]):
 
 # Force-clear session for current browser (no gist changes)
 def force_unlock_current_session():
-    for key in ["device_fingerprint", "_is_locked", "admin_bypass", "force_refresh", "flashmind_used", "used_once", "lock_status"]:
+    for key in ["device_id", "_is_locked", "admin_bypass", "force_refresh", "flashmind_used", "used_once", "lock_status"]:
         if key in st.session_state:
             del st.session_state[key]
     st.success("✅ Session reset locally. Rerun the app now.")
@@ -361,10 +326,10 @@ st.set_page_config(page_title="⚡ Harmony Business Intel Analysis", page_icon="
 st.title("⚡ Harmony BIA - Flashmind Analyzer")
 st.caption("Demo • One use per user • Contact Harmony for full license | © 2025 Harmony-Flashmind Systems")
 
-# Acquire stable device fingerprint ID
-device_fp = get_device_fingerprint()
-# Normalize ID prefix
-system_id = device_fp if device_fp.startswith("dfp_") else f"dfp_{device_fp}"
+# Acquire stable device id (bia_{hash})
+device_id = get_device_id()
+# Normalize ID prefix to bia_
+system_id = device_id if device_id.startswith("bia_") else f"bia_{device_id}"
 is_mobile_session = detect_mobile()
 
 st.write(f"🆔 Persistent System ID: `{system_id}` | 📱 Mobile: `{is_mobile_session}`")
@@ -415,8 +380,8 @@ with st.sidebar.expander("🔐 Admin Access", expanded=True):
                     if unlock(target.strip(), lock_data):
                         st.success(f"✅ Unlocked `{target}`")
                         # also clear any local session for target if it matches current
-                        if target.strip() == system_id and "device_fingerprint" in st.session_state:
-                            del st.session_state["device_fingerprint"]
+                        if target.strip() == system_id and "device_id" in st.session_state:
+                            del st.session_state["device_id"]
                             for k in ["_is_locked","flashmind_used","used_once","lock_status","force_refresh"]:
                                 if k in st.session_state:
                                     del st.session_state[k]
@@ -429,15 +394,15 @@ with st.sidebar.expander("🔐 Admin Access", expanded=True):
                     # clear gist file and reset session keys
                     save_lock_data({})
                     keys_to_clear = [
-                        "device_fingerprint", "_is_locked", "admin_bypass", "force_refresh",
+                        "device_id", "_is_locked", "admin_bypass", "force_refresh",
                         "flashmind_used", "used_once", "lock_status"
                     ]
                     for k in keys_to_clear:
                         if k in st.session_state:
                             del st.session_state[k]
                     st.success("✅ All locks cleared and session reset.")
-                    # reload so the app re-reads empty gist and new fp param will remain
-                    st.experimental_rerun()
+                    # reload so the app re-reads empty gist and new id remains
+                    st.rerun()
         elif pwd:
             st.error("❌ Incorrect password.")
 
@@ -528,5 +493,3 @@ if st.button("🚀 Run Flashmind Analysis"):
         st.rerun()
     else:
         st.success("✅ Admin bypass active — analysis completed without lock.")
-
-
