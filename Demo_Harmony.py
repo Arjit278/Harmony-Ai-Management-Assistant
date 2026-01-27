@@ -302,11 +302,139 @@ Analyze topic **{topic}** using Flashmind Intel-Strategic.
 def build_prompt(topic: str):
     base = build_locked_prompt(topic)
     return base + """
-Provide a detailed 2025 report with:
-- Material, strengths and composition with tech perspectives with company names for recommndations
-- India + global view
-- Actions (0–6 months) + (1–3 years)
-- Markdown formatting
+ok Provide:
+
+Perform a **CEO-level Root Cause Analysis (RCA)** for the given problem,
+using **engineering science, chemistry, physics, and real-world industry evidence**.
+The analysis must be suitable for **Board review, regulatory audits, and strategic decision-making**.
+
+The response must demonstrate **deep technical reasoning**, not surface-level explanations.
+
+
+SCOPE & DEPTH REQUIREMENTS (MANDATORY)
+
+- Explain root causes using:
+  - Chemistry (chemical reactions, fault mechanisms, physics & material science)
+  - Physics (pressure, stress, thermodynamics, fatigue, diffusion)
+  - Engineering principles (design, manufacturing, validation, lifecycle)
+- Quantify impacts wherever possible
+- Link technical failures to **business, safety, and financial consequences**
+- Use **2025–2026 industry practices only**
+
+
+DELIVERABLE STRUCTURE (STRICT)
+
+1. ROOT CAUSE IDENTIFICATION (QUANTIFIED)
+
+- Identify the **primary root cause(s)** and **contributing causes**
+- Assign **relevance percentages** to each cause
+- Percentages must **sum exactly to 100%**
+- Causes must be explained using:
+  - Scientific mechanisms (chemistry + physics)
+  - Engineering conditions (pressure, materials, environment)
+
+2. DETAILED RECOMMENDATIONS (PARAGRAPH FORMAT)
+
+- Provide **one paragraph per root cause**
+- Explain:
+  - Why the recommendation works scientifically
+  - How it mitigates the failure mechanism
+  - Engineering and operational feasibility
+  - Avoid repeating table text
+
+3. RCA SUMMARY TABLE (FOR CHARTING)
+
+Provide a markdown table ONLY (no ASCII boxes):
+
+| Root Cause | Contribution (%) | Recommended Solution |
+|------------|------------------|----------------------|
+| Cause 1    | XX               | Solution summary     |
+| Cause 2    | XX               | Solution summary     |
+| Cause 3    | XX               | Solution summary     |
+
+4. CHART HEADINGS (REQUIRED)
+
+Include explicit headings for visualization tools:
+
+- Bar Chart: Root Causes Contribution (%)
+- Pie Chart: Root Cause Distribution
+
+5. NUMERIC / COMPARATIVE TABLES
+
+- Create **separate tables** for:
+  - Percentage contributions
+  - Material comparisons
+  - Technology alternatives
+- These tables must be suitable for Pie or Bar charts
+
+6. DETAILED ENGINEERING & OPERATIONAL SUGGESTIONS
+
+- Design changes
+- Material upgrades
+- Manufacturing process controls
+- Testing & validation improvements
+- Service and maintenance interventions
+
+7. IMPLEMENTABLE INDUSTRY EXAMPLES (2025–2026)
+
+- Cite **Top 5 customers / OEMs / industries** that faced similar issues
+- Explain:
+  - What failure they experienced
+  - The root cause identified
+  - How they rectified it (engineering + process + policy)
+- Examples must be realistic and industry-aligned
+  (e.g., automotive OEMs, energy companies, infrastructure operators)
+
+8. AUTHORITATIVE INSIGHTS (2026 CONTEXT)
+
+- Reference **authoritative insights (2026 only)** such as:
+  - Industry standards
+  - Regulatory shifts
+  - OEM R&D directions
+  - Testing methodology evolution
+- Contextualize references (do not just quote them)
+- If references include images:
+  - Preserve them inline using markdown:
+    ![alt](url) or <img>
+
+
+CEO-LEVEL EXPECTATIONS
+
+- Clearly explain:
+  - Risk exposure
+  - Safety implications
+  - Financial and reputational impact
+- Translate technical failures into **business consequences**
+- Highlight what happens **if no action is taken**
+
+
+IMPORTANT RULES (NON-NEGOTIABLE)
+
+Use a clean enterprise report style similar to Big-4 consulting decks.
+
+Writing & formatting rules:
+- Inter-style professional typography (clean, modern, readable – UI controlled)
+- Structured headings with numbering
+- Short paragraphs (maximum 3 lines)
+- Tables for comparisons where relevant
+- Bold key figures and conclusions
+- Analyst / CFO briefing tone
+- Explain implications, not just raw data
+- No emojis, no casual language
+- High clarity, audit-safe wording
+- Assume outputs may be used in Board decks, audits, or regulatory reviews
+
+{definition_section}
+
+⚠ Ensure:  
+- Use percentages or numeric values for contributions (required for charts).  
+- Use *markdown tables* (pipes |) rather than ASCII boxes.  
+- Include headings for Pie or Bar charts so your renderer can pick them up.  
+
+📌 Context:  
+{context}  
+
+(We understand the complexity of problems and harmony required for solution-oriented decisions, Arjit's Theory of Problem Solving under patent: with IPI India)  
 """
 
 def flashmind_engine(prompt, api_key):
@@ -508,4 +636,5 @@ if st.button("🚀 Run Flashmind Analysis"):
         st.rerun()
     else:
         st.success("✅ Admin bypass active — analysis completed without lock.")
+
 
