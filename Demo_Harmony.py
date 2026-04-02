@@ -1,6 +1,6 @@
 # === ⚡ Flashmind Analyzer (BLOC Facility & Admin Only Edition) ===
 # Author: Arjit | Flashmind Systems © 2026
-# Version: 5.0.0 (Persistent Device ID + Strategic RCA Engine)
+# Version: 5.1.0 (Strict CEO-RCA Structure + Admin Hidden ID)
 
 import streamlit as st
 import requests, json, hashlib, base64, uuid
@@ -63,7 +63,6 @@ ANALYSIS_FALLBACK_MODELS = [
     "deepseek/deepseek-r1-distill-llama-70b:free",
     "meta-llama/llama-3.2-3b-instruct:free",
     "nvidia/nemotron-nano-12b-v2-vl:free",
-    "nvidia/nemotron-nano-9b-v2:free",
     "x-ai/grok-4.1-fast:free",
 ]
 
@@ -75,19 +74,16 @@ def call_openrouter_model_requests(prompt: str, model: str, api_key: str):
     payload = {
         "model": model,
         "messages": [
-            {"role": "system", "content": "You are a structured business & strategic analysis assistant."},
+            {"role": "system", "content": "You are a CEO-level Strategic & Technical Analyst."},
             {"role": "user", "content": prompt}
         ]
     }
-    for attempt in range(2):
-        try:
-            r = requests.post(OPENROUTER_URL, headers=headers, json=payload, timeout=90)
-            if r.status_code == 200:
-                data = r.json()
-                return data["choices"][0]["message"]["content"].strip()
-            time.sleep(2)
-        except: continue
-    return f"[❌ Model call failed: {model}]"
+    try:
+        r = requests.post(OPENROUTER_URL, headers=headers, json=payload, timeout=90)
+        if r.status_code == 200:
+            return r.json()["choices"][0]["message"]["content"].strip()
+    except: pass
+    return f"[❌ Model failed: {model}]"
 
 def call_openrouter_with_fallback_requests(prompt: str, api_key: str):
     for model in ANALYSIS_FALLBACK_MODELS:
@@ -98,19 +94,15 @@ def call_openrouter_with_fallback_requests(prompt: str, api_key: str):
 def get_references(query):
     return [
         f"https://www.brookings.edu/research/{query.replace(' ', '-')}-2025",
-        f"https://www.weforum.org/agenda/{query.replace(' ', '-')}-trends",
         f"https://www.mckinsey.com/{query.replace(' ', '-')}-insights-2025",
-        f"https://www.hbs.edu/faculty/Pages/item.aspx?topic={query.replace(' ', '-')}",
+        f"https://www.weforum.org/agenda/{query.replace(' ', '-')}-trends",
     ]
 
-def build_prompt(topic: str, context: str = "General Industry"):
+def build_prompt(topic: str):
     refs_md = "\n".join([f"- {r}" for r in get_references(topic)])
     return f"""
-Analyze topic **{topic}** using Flashmind Intel-Strategic.
-
-Perform a **CEO-level Root Cause Analysis (RCA)** for the given problem,
-using **engineering science, chemistry, physics, and real-world industry evidence**.
-The analysis must be suitable for **Board review, regulatory audits, and strategic decision-making**.
+Analyze topic **{topic}** using Flashmind Intel-Strategic. 
+Perform a **CEO-level Root Cause Analysis (RCA)** using **engineering science, chemistry, physics, and real-world evidence**.
 
 {refs_md}
 
@@ -124,15 +116,13 @@ DELIVERABLE STRUCTURE (STRICT):
 7. IMPLEMENTABLE INDUSTRY EXAMPLES (2025–2026)
 8. AUTHORITATIVE INSIGHTS (2026 CONTEXT)
 
-📌 Context: {context}
-(We understand the complexity of problems and harmony required for solution-oriented decisions, Arjit's Theory of Problem Solving under patent: with IPI India)
+(Arjit's Theory of Problem Solving under patent: with IPI India)
 """
 
 def flashmind_engine(prompt, api_key):
-    if not api_key: return {"Analysis 1": "❌ Key missing", "Analysis 2": "⚠ None", "Summary": "⚠ None"}
+    if not api_key: return {"Analysis 1": "❌ Key missing", "Summary": "⚠ None"}
     return {
         "Analysis 1": call_openrouter_with_fallback_requests(prompt, api_key),
-        "Analysis 2": call_openrouter_with_fallback_requests(prompt, api_key),
         "Summary": call_openrouter_with_fallback_requests(prompt, api_key)
     }
 
@@ -145,31 +135,30 @@ st.markdown("""
     <style>
     .stApp { background-color: #ffffff; }
     .main-header { font-size: 2.2rem; font-weight: 800; color: #0055ff; text-align: center; margin-bottom: 0px; }
-    .system-bar { background-color: #f1f5f9; padding: 10px; border-radius: 8px; border: 1px solid #cbd5e1; margin-bottom: 20px; text-align: center; }
+    .sub-caption { font-size: 0.9rem; color: #64748b; text-align: center; margin-bottom: 30px; }
     </style>
     <div class="main-header">⚡ Harmony BIA - Flashmind Analyzer</div>
+    <div class="sub-caption">Strategic Intelligence Engine | BLOC Facility Active | © 2026 Harmony-Flashmind Systems</div>
 """, unsafe_allow_html=True)
-st.caption("<center>Strategic Intelligence Engine | BLOC Facility Active | © 2026 Harmony-Flashmind Systems</center>", unsafe_allow_html=True)
 
 system_id = get_device_id()
 is_mobile = detect_mobile()
 
-# --- Admin Section ---
+# --- Admin Section (System ID Hidden Here) ---
 admin_bypass = False
 with st.sidebar.expander("🔐 Admin Access", expanded=True):
     pwd = st.text_input("Admin Password", type="password")
     if pwd == ADMIN_PASSWORD:
         st.success("Admin Access Granted")
+        st.markdown(f"**🆔 System ID:** `{system_id}`")
+        st.markdown(f"**📱 Mobile:** `{is_mobile}`")
         admin_bypass = True
         if st.button("🧹 Clear BLOC Registry"):
-            if LOCK_API_KEY:
-                requests.patch(LOCK_FILE_URL, headers={"Authorization": f"token {LOCK_API_KEY}"}, json={"files": {"lock.json": {"content": "{}"}}})
-                st.rerun()
+            requests.patch(LOCK_FILE_URL, headers={"Authorization": f"token {LOCK_API_KEY}"}, json={"files": {"lock.json": {"content": "{}"}}})
+            st.rerun()
     elif pwd: st.error("Access Denied")
 
-st.markdown(f'<div class="system-bar">🆔 System ID: <code>{system_id}</code> | 📱 Mobile: <code>{is_mobile}</code></div>', unsafe_allow_html=True)
-
-# --- Topic Input ---
+# --- Topic Input (Main Page) ---
 st.markdown("### 📘 Enter Analysis Topic")
 topic = st.text_input("", placeholder="Type your strategic analysis topic here...", label_visibility="collapsed")
 
@@ -177,22 +166,16 @@ if st.button("🚀 Run Flashmind Analysis"):
     if not topic.strip():
         st.warning("Please enter a topic.")
     else:
-        with st.spinner("Processing via Omnicore Optimized engine... let Omnicore systems knock the doors of relevant websites, Take a sip of coffee"):
+        with st.spinner("Processing via Omnicore Optimized engine... Take a sip of coffee"):
             prompt = build_prompt(topic)
             result = flashmind_engine(prompt, OPENROUTER_KEY)
             
             st.subheader("🧠 Flashmind Strategic Analysis")
-            col1, col2 = st.columns(2)
-            with col1:
-                st.markdown("### 🔹 Analysis Stream 1")
-                st.write(result["Analysis 1"])
-            with col2:
-                st.markdown("### 🔹 Analysis Stream 2")
-                st.write(result["Analysis 2"])
+            st.markdown(result["Analysis 1"])
             
             st.markdown("---")
             st.markdown("### 🧭 Executive Summary & Final Recommendations")
-            st.write(result["Summary"])
+            st.markdown(result["Summary"])
             
             record_bloc_activity(system_id, topic, is_mobile, admin_bypass)
             st.success("✅ Analysis complete. Use recorded in BLOC facility.")
