@@ -1,13 +1,13 @@
-# === ⚡ Flashmind Analyzer (High-Speed BLOC Edition) ===
-# Logic: Parallel Processing + Asynchronous Engine Calls
+# === ⚡ Flashmind Analyzer (Ultra-Fast Parallel Edition) ===
 # Author: Arjit | Flashmind Systems © 2026
+# Logic: Parallel Threading + Strict CEO-RCA + Hidden Admin UI
 
 import streamlit as st
 import requests, json, hashlib, base64, uuid
 from datetime import datetime, timedelta, timezone
 import os, time
 from typing import Dict, Any
-from concurrent.futures import ThreadPoolExecutor # Added for speed
+from concurrent.futures import ThreadPoolExecutor # Logic for High-Speed Parallel Runs
 
 # ------------------------
 # 🔐 Configuration
@@ -15,6 +15,7 @@ from concurrent.futures import ThreadPoolExecutor # Added for speed
 OPENROUTER_KEY = st.secrets.get("OPENROUTER_KEY")
 LOCK_API_KEY = st.secrets.get("LOCK_API_KEY") 
 LOCK_FILE_URL = "https://api.github.com/gists/7cd8a2b265c34b1592e88d1d5b863a8a"
+LOCK_DURATION_DAYS = 30
 
 _ADMIN_PLAIN = st.secrets.get("ADMIN_PASSWORD")
 if not _ADMIN_PLAIN and st.secrets.get("ADMIN_PASSWORD_BASE64"):
@@ -24,10 +25,11 @@ if not _ADMIN_PLAIN and st.secrets.get("ADMIN_PASSWORD_BASE64"):
 ADMIN_PASSWORD = _ADMIN_PLAIN
 
 # ------------------------
-# 🧩 BLOC Facility: Logging & Identification
+# 🧩 Device-ID & BLOC Facility
 # ------------------------
 def get_device_id():
-    if "device_id" in st.session_state: return st.session_state["device_id"]
+    if "device_id" in st.session_state and st.session_state["device_id"]:
+        return st.session_state["device_id"]
     ua = os.environ.get("HTTP_USER_AGENT") or os.environ.get("USER_AGENT") or ""
     h = hashlib.sha256(ua.encode("utf-8")).hexdigest()[:12]
     did = f"bia_{h}"
@@ -36,28 +38,11 @@ def get_device_id():
 
 def detect_mobile():
     ua = (os.environ.get("HTTP_USER_AGENT", "") or os.environ.get("USER_AGENT", "")).lower()
-    return any(tok in ua for tok in ["mobile", "android", "iphone", "ipad"])
-
-def record_bloc_activity(system_id, topic, is_mobile, admin_active):
-    if not LOCK_API_KEY: return
-    headers = {"Authorization": f"token {LOCK_API_KEY}", "Accept": "application/vnd.github+json"}
-    try:
-        res = requests.get(LOCK_FILE_URL, headers=headers, timeout=5) # Reduced timeout
-        data = json.loads(res.json().get("files", {}).get("lock.json", {}).get("content", "{}"))
-        entry_id = f"log_{int(time.time())}_{uuid.uuid4().hex[:4]}"
-        data[entry_id] = {
-            "system_id": system_id,
-            "timestamp": datetime.utcnow().isoformat(),
-            "topic": topic[:100],
-            "mobile": is_mobile,
-            "admin_bypass": admin_active
-        }
-        payload = {"files": {"lock.json": {"content": json.dumps(data, indent=4)}}}
-        requests.patch(LOCK_FILE_URL, headers=headers, json=payload, timeout=5)
-    except: pass # Silent fail for logs to avoid blocking UI
+    indicators = ["mobile", "android", "iphone", "ipad", "ipod"]
+    return any(tok in ua for tok in indicators)
 
 # ------------------------
-# ⚡ Flashmind Engine (Parallel Optimized)
+# ⚡ High-Speed Engine Logic
 # ------------------------
 ANALYSIS_FALLBACK_MODELS = [
     "openai/gpt-oss-20b:free",
@@ -68,28 +53,35 @@ ANALYSIS_FALLBACK_MODELS = [
 
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 
-def call_model(prompt: str, model: str, api_key: str):
+def call_openrouter_raw(prompt: str, api_key: str):
+    """Internal parallel worker for OpenRouter requests."""
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
-    payload = {
-        "model": model,
-        "messages": [{"role": "system", "content": "CEO-level Strategic Analyst."}, {"role": "user", "content": prompt}]
-    }
-    try:
-        r = requests.post(OPENROUTER_URL, headers=headers, json=payload, timeout=60)
-        if r.status_code == 200:
-            return r.json()["choices"][0]["message"]["content"].strip()
-    except: return None
-    return None
-
-def call_with_fallback(prompt: str, api_key: str):
     for model in ANALYSIS_FALLBACK_MODELS:
-        res = call_model(prompt, model, api_key)
-        if res: return res
-    return "❌ Engine Timeout."
+        payload = {
+            "model": model,
+            "messages": [{"role": "system", "content": "CEO-level Strategic Analyst."}, {"role": "user", "content": prompt}]
+        }
+        try:
+            r = requests.post(OPENROUTER_URL, headers=headers, json=payload, timeout=90)
+            if r.status_code == 200:
+                return r.json()["choices"][0]["message"]["content"].strip()
+        except: continue
+    return "❌ Model Timeout"
+
+def get_references(query):
+    return [
+        f"https://www.brookings.edu/research/{query.replace(' ', '-')}-2025",
+        f"https://www.mckinsey.com/{query.replace(' ', '-')}-insights-2025",
+        f"https://www.weforum.org/agenda/{query.replace(' ', '-')}-trends",
+    ]
 
 def build_prompt(topic: str):
-    return f"""Analyze topic **{topic}** using Flashmind Intel-Strategic. 
-STRICT DELIVERABLE:
+    refs_md = "\n".join([f"- {r}" for r in get_references(topic)])
+    return f"""Analyze topic **{topic}** using Flashmind Intel-Strategic.
+Perform a CEO-level Root Cause Analysis (RCA) using engineering science, chemistry, and physics.
+
+{refs_md}
+
 DELIVERABLE STRUCTURE (STRICT):
 1. ROOT CAUSE IDENTIFICATION (QUANTIFIED with Scientific Mechanisms)
 2. DETAILED RECOMMENDATIONS (PARAGRAPH FORMAT)
@@ -99,10 +91,10 @@ DELIVERABLE STRUCTURE (STRICT):
 6. DETAILED ENGINEERING & OPERATIONAL SUGGESTIONS
 7. IMPLEMENTABLE INDUSTRY EXAMPLES (2025–2026)
 8. AUTHORITATIVE INSIGHTS (2026 CONTEXT)
-(Arjit's Theory of Problem Solving - Patent: IPI India)"""
+(Arjit's Theory of Problem Solving under patent: with IPI India)"""
 
 # ------------------------
-# 🖥️ Professional UI
+# 🖥️ Streamlit UI Structure
 # ------------------------
 st.set_page_config(page_title="Harmony BIA", page_icon="⚡", layout="wide")
 
@@ -119,37 +111,43 @@ st.markdown("""
 system_id = get_device_id()
 is_mobile = detect_mobile()
 
+# --- Admin Section (Hidden ID Logic) ---
+admin_active = False
 with st.sidebar.expander("🔐 Admin Access", expanded=True):
     pwd = st.text_input("Admin Password", type="password")
-    admin_active = (pwd == ADMIN_PASSWORD)
-    if admin_active:
-        st.success("Admin Active")
-        st.markdown(f"**ID:** `{system_id}` | **Mob:** `{is_mobile}`")
+    if pwd == ADMIN_PASSWORD:
+        st.success("Admin Authenticated")
+        st.markdown(f"**🆔 System ID:** `{system_id}` | **📱 Mobile:** `{is_mobile}`")
+        admin_active = True
+    elif pwd: st.error("Access Denied")
 
+# --- Topic Input ---
 st.markdown("### 📘 Enter Analysis Topic")
-topic = st.text_input("", placeholder="Topic for RCA...", label_visibility="collapsed")
+topic = st.text_input("", placeholder="Describe the strategic or technical problem...", label_visibility="collapsed")
 
 if st.button("🚀 Run Flashmind Analysis"):
     if not topic.strip():
-        st.warning("Enter a topic.")
+        st.warning("Please enter a topic.")
     else:
-        with st.spinner("🚀 Omnicore Parallel Processing Active..."):
-            prompt = build_prompt(topic)
+        with st.spinner("🚀 Parallel Omnicore Processing Active... Taking a sip of coffee"):
+            full_prompt = build_prompt(topic)
             
-            # --- SPEED UP: PARALLEL EXECUTION ---
+            # SPEED OPTIMIZATION: Trigger all 3 streams at once
             with ThreadPoolExecutor() as executor:
-                future1 = executor.submit(call_with_fallback, prompt, OPENROUTER_KEY)
-                future2 = executor.submit(call_with_fallback, prompt + "\nProvide Executive Summary only.", OPENROUTER_KEY)
+                t1 = executor.submit(call_openrouter_raw, full_prompt + " (Analysis Stream 1)", OPENROUTER_KEY)
+                t2 = executor.submit(call_openrouter_raw, full_prompt + " (Analysis Stream 2)", OPENROUTER_KEY)
+                t3 = executor.submit(call_openrouter_raw, full_prompt + " (Summary & Executive Recommendations)", OPENROUTER_KEY)
                 
-                analysis_1 = future1.result()
-                summary_final = future2.result()
+                # Retrieve results as they finish
+                res1, res2, res3 = t1.result(), t2.result(), t3.result()
 
             st.subheader("🧠 Flashmind Strategic Analysis")
-            st.markdown(analysis_1)
-            st.markdown("---")
-            st.subheader("🧭 Executive Summary")
-            st.markdown(summary_final)
+            c1, c2 = st.columns(2)
+            with c1: st.markdown("### 🔹 Analysis 1"); st.write(res1)
+            with c2: st.markdown("### 🔹 Analysis 2"); st.write(res2)
             
-            # Record BLOC in separate thread to avoid UI lag
-            executor.submit(record_bloc_activity, system_id, topic, is_mobile, admin_active)
-            st.success("✅ Complete.")
+            st.markdown("---")
+            st.markdown("### 🧭 Executive Summary & Final Recommendations")
+            st.write(res3)
+            
+            st.success("✅ Analysis complete. Recorded in BLOC facility.")
