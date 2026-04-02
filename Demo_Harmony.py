@@ -163,7 +163,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-st.markdown("<div class='main-title'>⚡ Flashmind Analyzer</div>", unsafe_allow_html=True)
+st.markdown("<div class='main-title'>⚡ Flashmind Analyzer powered by Intelligent Patent RC layout </div>", unsafe_allow_html=True)
 
 # ------------------------
 # ADMIN PANEL
