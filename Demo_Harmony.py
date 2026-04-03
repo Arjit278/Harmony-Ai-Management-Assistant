@@ -110,13 +110,14 @@ def call_model_with_fallback(prompt):
             payload = {
                 "model": model,
                 "messages": [{"role": "user", "content": prompt}]
+                "stream": True 
             }
 
             r = requests.post(
                 "https://openrouter.ai/api/v1/chat/completions",
                 headers=headers,
                 json=payload,
-                "stream"=True,
+                stream=True,
                 timeout=60
             )
 
