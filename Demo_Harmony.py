@@ -19,13 +19,13 @@ ADMIN_PASSWORD = st.secrets.get("ADMIN_PASSWORD")
 # 🔥 MODEL FALLBACK LIST
 # ------------------------
 ANALYSIS_FALLBACK_MODELS = [
-    "openai/gpt-oss-20b:free",
-    "deepseek/deepseek-r1-distill-llama-70b:free",
+    "qwen/qwen3-coder:free",
+    "qwen/qwen3-next-80b-a3b-instruct:free",
     "meta-llama/llama-3.2-3b-instruct:free",
-    "nvidia/nemotron-nano-12b-v2-vl:free",
-    "nvidia/nemotron-nano-9b-v2:free",
-    "x-ai/grok-4.1-fast:free",
-]
+    "nousresearch/hermes-2-pro-llama-3-8b",
+    "openai/gpt-oss-20b:free",
+    "deepseek/deepseek-r1-distill-llama-70b:free"
+]        
 
 # ------------------------
 # DEVICE ID
