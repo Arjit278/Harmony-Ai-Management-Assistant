@@ -116,7 +116,7 @@ def call_model_with_fallback(prompt):
                 "https://openrouter.ai/api/v1/chat/completions",
                 headers=headers,
                 json=payload,
-                "stream": true,
+                "stream"=True,
                 timeout=60
             )
 
