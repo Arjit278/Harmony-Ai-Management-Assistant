@@ -142,7 +142,20 @@ def flashmind_engine(prompt):
         "Analysis 2": call_model_with_fallback(prompt),
         "Summary": call_model_with_fallback(prompt)
     }
-
+def extract_chart_data(text):
+    lines = text.split("\n")
+    data = []
+    for line in lines:
+        if "|" in line and "%" in line:
+            parts = [p.strip() for p in line.split("|") if p.strip()]
+            if len(parts) >= 2:
+                try:
+                    label = parts[0]
+                    value = int(parts[1].replace("%", ""))
+                    data.append((label, value))
+                except:
+                    pass
+    return data
 # ------------------------
 # UI CONFIG
 # ------------------------
@@ -191,6 +204,7 @@ with st.sidebar:
             save_lock_data({})
             st.success("All cleared")
 
+
 # ------------------------
 # LOCK CHECK
 # ------------------------
@@ -215,11 +229,47 @@ if st.button("Generate Analysis"):
 
     st.markdown("### 🧠 Analysis 1")
     st.write(result["Analysis 1"])
+    import pandas as pd
 
+    chart_data = extract_chart_data(result["Analysis 1"])
+    
+    if chart_data:
+        df = pd.DataFrame(chart_data, columns=["Cause", "Percent"])
+        
+        st.subheader("📊 Bar Chart")
+        st.bar_chart(df.set_index("Cause"))
+    
+        st.subheader("🥧 Pie Chart")
+        st.pyplot(df.set_index("Cause").plot.pie(y="Percent", autopct='%1.1f%%').figure) 
+     
     st.markdown("### 🧠 Analysis 2")
     st.write(result["Analysis 2"])
+    import pandas as pd
 
+    chart_data = extract_chart_data(result["Analysis 2"])
+    
+    if chart_data:
+        df = pd.DataFrame(chart_data, columns=["Cause", "Percent"])
+        
+        st.subheader("📊 Bar Chart")
+        st.bar_chart(df.set_index("Cause"))
+    
+        st.subheader("🥧 Pie Chart")
+        st.pyplot(df.set_index("Cause").plot.pie(y="Percent", autopct='%1.1f%%').figure) 
+    
     st.markdown("### 📊 Summary")
     st.write(result["Summary"])
+    import pandas as pd
+
+    chart_data = extract_chart_data(result["Summary])
+    
+    if chart_data:
+        df = pd.DataFrame(chart_data, columns=["Cause", "Percent"])
+        
+        st.subheader("📊 Bar Chart")
+        st.bar_chart(df.set_index("Cause"))
+    
+        st.subheader("🥧 Pie Chart")
+        st.pyplot(df.set_index("Cause").plot.pie(y="Percent", autopct='%1.1f%%').figure) 
 
     register_lock(system_id, lock_data)
