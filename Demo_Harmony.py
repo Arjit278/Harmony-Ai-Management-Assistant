@@ -93,9 +93,7 @@ OUTPUT FORMAT:
 
 ### Business Impact
 
-### Charts:
-- Bar Chart: Root Causes %
-- Pie Chart: Distribution
+### Top 5 prompt based industry leaders with website links 
 """
 
 # ------------------------
