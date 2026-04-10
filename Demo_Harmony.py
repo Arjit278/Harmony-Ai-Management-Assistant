@@ -5,6 +5,8 @@ import streamlit as st
 import requests, json, hashlib, uuid
 from datetime import datetime, timedelta
 import os, time
+import matplotlib.pyplot as plt
+import pandas as pd
 
 # ------------------------
 # CONFIG
@@ -229,47 +231,52 @@ if st.button("Generate Analysis"):
 
     st.markdown("### 🧠 Analysis 1")
     st.write(result["Analysis 1"])
-    import pandas as pd
-
     chart_data = extract_chart_data(result["Analysis 1"])
-    
+
     if chart_data:
         df = pd.DataFrame(chart_data, columns=["Cause", "Percent"])
-        
+    
         st.subheader("📊 Bar Chart")
         st.bar_chart(df.set_index("Cause"))
     
         st.subheader("🥧 Pie Chart")
-        st.pyplot(df.set_index("Cause").plot.pie(y="Percent", autopct='%1.1f%%').figure) 
+        fig, ax = plt.subplots()
+        df.set_index("Cause").plot.pie(y="Percent", autopct='%1.1f%%', ax=ax)
+        ax.set_ylabel("")
+        st.pyplot(fig) 
      
     st.markdown("### 🧠 Analysis 2")
     st.write(result["Analysis 2"])
-    import pandas as pd
-
+    
     chart_data = extract_chart_data(result["Analysis 2"])
     
     if chart_data:
         df = pd.DataFrame(chart_data, columns=["Cause", "Percent"])
-        
+    
         st.subheader("📊 Bar Chart")
         st.bar_chart(df.set_index("Cause"))
     
         st.subheader("🥧 Pie Chart")
-        st.pyplot(df.set_index("Cause").plot.pie(y="Percent", autopct='%1.1f%%').figure) 
+        fig, ax = plt.subplots()
+        df.set_index("Cause").plot.pie(y="Percent", autopct='%1.1f%%', ax=ax)
+        ax.set_ylabel("")
+        st.pyplot(fig)
     
     st.markdown("### 📊 Summary")
     st.write(result["Summary"])
-    import pandas as pd
-
-    chart_data = extract_chart_data(result["Summary])
+    
+    chart_data = extract_chart_data(result["Summary"])
     
     if chart_data:
         df = pd.DataFrame(chart_data, columns=["Cause", "Percent"])
-        
+    
         st.subheader("📊 Bar Chart")
         st.bar_chart(df.set_index("Cause"))
     
         st.subheader("🥧 Pie Chart")
-        st.pyplot(df.set_index("Cause").plot.pie(y="Percent", autopct='%1.1f%%').figure) 
+        fig, ax = plt.subplots()
+        df.set_index("Cause").plot.pie(y="Percent", autopct='%1.1f%%', ax=ax)
+        ax.set_ylabel("")
+        st.pyplot(fig)
 
     register_lock(system_id, lock_data)
