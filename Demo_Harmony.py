@@ -75,7 +75,7 @@ def unlock(system_id, data):
 # ------------------------
 # 🔥 FLASHMIND PROMPT
 # ------------------------
-def build_prompt(topic):
+def build_prompt(topic, context="No additional file context provided."):
     return f"""
 Perform a CEO-level Root Cause Analysis for: {topic}
 Additional Context from File: {context}
@@ -242,7 +242,7 @@ if st.button("Generate Analysis"):
         st.stop()
 
     with st.spinner("Running Flashmind Analysis..."):
-        prompt = build_prompt(topic)
+        prompt = build_prompt(topic, context=file_context)
         result = flashmind_engine(prompt)
 
     st.markdown("### 🧠 Analysis 1")
