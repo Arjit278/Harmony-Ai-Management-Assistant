@@ -77,6 +77,7 @@ def unlock(system_id, data):
 def build_prompt(topic):
     return f"""
 Perform a CEO-level Root Cause Analysis for: {topic}
+Additional Context from File: {context}
 
 1. Identify root causes with % (total = 100)
 2. Use physics, chemistry, engineering logic
@@ -216,6 +217,22 @@ if is_locked(system_id, lock_data):
 # MAIN UI
 # ------------------------
 topic = st.text_input("", placeholder="Enter your analysis topic...")
+
+# --- ADDED FILE UPLOAD OPTION ---
+uploaded_file = st.file_uploader("Attach CSV or Excel for deep context (Optional)", type=["csv", "xlsx"])
+file_context = ""
+
+if uploaded_file is not None:
+    try:
+        if uploaded_file.name.endswith('.csv'):
+            df_upload = pd.read_csv(uploaded_file)
+        else:
+            df_upload = pd.read_excel(uploaded_file)
+        # Convert first 2000 characters of data to text context
+        file_context = df_upload.to_string(index=False)[:2000] 
+        st.success("File attached and data extracted.")
+    except Exception as e:
+        st.error(f"Error reading file: {e}")
 
 if st.button("Generate Analysis"):
 
