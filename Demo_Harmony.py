@@ -7,6 +7,7 @@ from datetime import datetime, timedelta
 import os, time
 import matplotlib.pyplot as plt
 import pandas as pd
+import openpyxl
 
 # ------------------------
 # CONFIG
